@@ -8,3 +8,4 @@ This is my (ambitious!) attempt to create a comet server that can handle 1 milli
 It requires libev to compile. So far, only being developed on my Mac. When it gets good enough, i'll make it work on an EC2 box.
 
 https://github.com/chrishulbert/MegaComet
+http://software.schmorp.de/pkg/libev.html
