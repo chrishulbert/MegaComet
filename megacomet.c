@@ -14,8 +14,7 @@
 #define LISTEN_BACKLOG 1024 // The number of pending connections that can be queued up at any one time 
 
 struct ev_io port_watcher;
-int total_clients = 0; // Total number of connected clients
-int sd; // The socket file descriptor
+int sd; // The listening socket file descriptor
 
 void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents);
 void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents);
@@ -73,29 +72,22 @@ int main(void) {
 
 /* Accept client requests */
 void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
-	struct sockaddr_in client_addr;
-	socklen_t client_len = sizeof(client_addr);
-	int client_sd;
 	struct ev_io *w_client = (struct ev_io*) malloc (sizeof(struct ev_io));
 
-	if(EV_ERROR & revents)
-	{
-	perror("got invalid event");
-	return;
+	if (EV_ERROR & revents) {
+		puts("got invalid event");
+		return;
 	}
 
 	// Accept client request
-	client_sd = accept(watcher->fd, (struct sockaddr *)&client_addr, &client_len);
+	struct sockaddr_in client_addr;
+	socklen_t client_len = sizeof(client_addr);
+	int client_sd = accept(watcher->fd, (struct sockaddr *)&client_addr, &client_len);
 
-	if (client_sd < 0)
-	{
-	perror("accept error");
-	return;
+	if (client_sd < 0) {
+		puts("accept error");
+		return;
 	}
-
-	total_clients ++; // Increment total_clients count
-	printf("Successfully connected with client.\n");
-	printf("%d client(s) connected.\n", total_clients);
 
 	// Initialize and start watcher to read client requests
 	ev_io_init(w_client, read_cb, client_sd, EV_READ);
