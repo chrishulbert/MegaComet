@@ -7,14 +7,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include <netinet/in.h>
-#include <ev.h>
 
-#define PORT_NO 8080
-#define BUFFER_SIZE 1024
+#include <ev.h>
+#include "khash.h"
+
+#define PORT_NO 8080 // Which port are we listening on
+#define BUFFER_SIZE 1024 // The size of the read buffer
 #define LISTEN_BACKLOG 1024 // The number of pending connections that can be queued up at any one time 
 
 struct ev_io port_watcher;
 int sd; // The listening socket file descriptor
+
+// Init the various hash tables
+KHASH_MAP_INIT_INT(socketBytes, int); // For testing, this is for counting the bytes per socket
 
 void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents);
 void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents);
@@ -64,7 +69,25 @@ void libevLoop(void) {
 	ev_loop(loop, 0);
 }
 
+// Initialise the hash tables that are needed
+void initHashes() {
+	int ret, is_missing;
+	khiter_t k;
+	khash_t(socketBytes) *h = kh_init(socketBytes); // Malloc the hash
+	k = kh_put(socketBytes, h, 5, &ret); // Insert 5 to the table
+	if (!ret) kh_del(socketBytes, h, k); // Delete it if it was there before we put it in
+	kh_value(h, k) = 10; // Change it to 10
+	k = kh_get(socketBytes, h, 10); // Get the value at 10
+	is_missing = (k == kh_end(h)); // Is there anything there?
+	k = kh_get(socketBytes, h, 5); // Get the value at 5
+	kh_del(socketBytes, h, k); // Delete the value at 5
+	for (k = kh_begin(h); k != kh_end(h); ++k) // Iterate somehow 
+		if (kh_exist(h, k)) kh_value(h, k) = 1;
+	kh_destroy(socketBytes, h); // Free it all
+}
+
 int main(void) {
+	initHashes();
 	openSocket();
 	libevLoop();
 	return 0;
@@ -99,34 +122,28 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	char buffer[BUFFER_SIZE];
 	ssize_t read;
 
-	if(EV_ERROR & revents)
-	{
-		perror("got invalid event");
+	if (EV_ERROR & revents) {
+		puts ("got invalid event");
 		return;
 	}
 
 	// Receive message from client socket
 	read = recv(watcher->fd, buffer, BUFFER_SIZE, 0);
 
-	if(read < 0)
-	{
-	perror("read error");
-	return;
+	if (read < 0) {
+		puts ("read error");
+		return;
 	}
 
-	if(read == 0)
-	{
-	// Stop and free watchet if client socket is closing
-	ev_io_stop(loop,watcher);
-	free(watcher);
-	perror("peer might closing");
-	total_clients --; // Decrement total_clients count
-	printf("%d client(s) connected.\n", total_clients);
-	return;
+	if(read == 0) {
+		// Stop and free watcher if client socket is closing
+		ev_io_stop(loop,watcher);
+		free(watcher);
+		puts("peer might closing");
+		return;
 	}
-	else
-	{
-	printf("message:%s\n",buffer);
+	else {
+		printf("message:%s\n",buffer);
 	}
 
 	// Send message bach to the client
