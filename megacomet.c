@@ -14,12 +14,23 @@
 #define PORT_NO 8080 // Which port are we listening on
 #define BUFFER_SIZE 1024 // The size of the read buffer
 #define LISTEN_BACKLOG 1024 // The number of pending connections that can be queued up at any one time 
+#define FIRST_LINE_SIZE 60 // The length of the first line allowed (the GET line) - each byte here equals a meg when multiplied by 1m!
 
+// Useful utilities
+typedef unsigned char byte;
+
+// Globals (yuck!)
 struct ev_io port_watcher;
 int sd; // The listening socket file descriptor
 
-// Init the various hash tables
-KHASH_MAP_INIT_INT(socketBytes, int); // For testing, this is for counting the bytes per socket
+// For the status of each connection, we have a hash that goes from the socket file descriptor to the below struct:
+struct clientStatus {
+	char firstLine[60]; // Eg GET /237f0c36-d661-43d2-b944-13d708c17d36 HTTP/1.1
+	int endFirstLineStatus; // 0=nothing, 1=found '\r', 2=found '\n'
+	int endHeadersStatus; // 0=nothing, 1=found '\r', 2='\n', 3=2nd '\r', 4=2nd '\n'
+};
+KHASH_MAP_INIT_INT(clientStatuses, clientStatus*); // Creates the macros for dealing with this hash
+khash_t(clientStatuses) *clientStatuses; = kh_init(clientStatuses); // Malloc the hash
 
 void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents);
 void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents);
@@ -55,7 +66,7 @@ void openSocket(void) {
 }
 
 // The main libev loop
-void libevLoop(void) {
+void run() {
 	// use the default event loop unless you have special needs
 	struct ev_loop *loop = ev_default_loop(0);
 
@@ -71,25 +82,38 @@ void libevLoop(void) {
 
 // Initialise the hash tables that are needed
 void initHashes() {
-	int ret, is_missing;
-	khiter_t k;
-	khash_t(socketBytes) *h = kh_init(socketBytes); // Malloc the hash
-	k = kh_put(socketBytes, h, 5, &ret); // Insert 5 to the table
-	if (!ret) kh_del(socketBytes, h, k); // Delete it if it was there before we put it in
-	kh_value(h, k) = 10; // Change it to 10
-	k = kh_get(socketBytes, h, 10); // Get the value at 10
-	is_missing = (k == kh_end(h)); // Is there anything there?
-	k = kh_get(socketBytes, h, 5); // Get the value at 5
-	kh_del(socketBytes, h, k); // Delete the value at 5
-	for (k = kh_begin(h); k != kh_end(h); ++k) // Iterate somehow 
-		if (kh_exist(h, k)) kh_value(h, k) = 1;
-	kh_destroy(socketBytes, h); // Free it all
+	clientStatuses = kh_init(clientStatuses); // Malloc the hash
+
+	// int ret, is_missing;
+	// khiter_t k;
+	// khash_t(socketBytes) *h = kh_init(socketBytes); // Malloc the hash
+	// k = kh_put(socketBytes, h, 5, &ret); // Insert 5 to the table
+	// if (!ret) kh_del(socketBytes, h, k); // Delete it if it was there before we put it in
+	// kh_value(h, k) = 10; // Change it to 10
+	// k = kh_get(socketBytes, h, 10); // Get the value at 10
+	// is_missing = (k == kh_end(h)); // Is there anything there?
+	// k = kh_get(socketBytes, h, 5); // Get the value at 5
+	// kh_del(socketBytes, h, k); // Delete the value at 5
+	// for (k = kh_begin(h); k != kh_end(h); ++k) // Iterate somehow 
+	// 	if (kh_exist(h, k)) kh_value(h, k) = 1;
 }
 
-int main(void) {
+// All the setup stuff goes here
+void setup() {
 	initHashes();
 	openSocket();
-	libevLoop();
+}
+
+// All the shutdown stuff goes here
+void shutDown() {
+	kh_destroy(clientStatuses, clientStatuses); // Free it all
+}
+
+// Everyone's favourite function!
+int main() {
+	setup();
+	run();
+	shutDown();
 	return 0;
 }
 
@@ -112,6 +136,11 @@ void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 		return;
 	}
 
+	// Add this client's status to the hash
+	struct clientStatus *newStatus = calloc(1, sizeof(clientStatus));
+	int ret;
+	kh_put(clientStatuses, clientStatuses, newStatus, &ret)
+
 	// Initialize and start watcher to read client requests
 	ev_io_init(w_client, read_cb, client_sd, EV_READ);
 	ev_io_start(loop, w_client);
@@ -119,7 +148,7 @@ void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 
 /* Read client message */
 void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
-	char buffer[BUFFER_SIZE];
+	byte buffer[BUFFER_SIZE];
 	ssize_t read;
 
 	if (EV_ERROR & revents) {
@@ -127,14 +156,23 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 		return;
 	}
 
+	// Look up this socket's client status from the hash
+	khiter_t k = kh_get(clientStatuses, clientStatuses, watcher->fd);
+	if (k == kh_end(h)) {
+		puts ("Couldn't find client status in hash!");
+		// TODO shut down this connection
+		return;
+	}
+	struct clientStatus *thisClient = kh_val(clientStatuses, k);
+
 	// Receive message from client socket
 	read = recv(watcher->fd, buffer, BUFFER_SIZE, 0);
 
 	if (read < 0) {
 		puts ("read error");
+		// TODO shut down this connection
 		return;
 	}
-
 	if(read == 0) {
 		// Stop and free watcher if client socket is closing
 		ev_io_stop(loop,watcher);
@@ -142,8 +180,39 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 		puts("peer might closing");
 		return;
 	}
-	else {
-		printf("message:%s\n",buffer);
+	// Go through the bytes read
+	for (int i=0; i<read; i++) {
+		// Did we just receive the '\r' and are we now waiting for the '\n' ?
+		if (thisClient->endFirstLineStatus == 1) {
+			if (buffer[i]=='\n') {
+				thisClient->endFirstLineStatus = 2; // Great, now we're going thru the rest of the
+			} else {
+				// Bugger, it wasn't a \n. Drop the connection
+				// TODO shut down the connection
+			}
+		}
+		// Are we still receiving the first line?
+		if (thisClient->endFirstLineStatus == 0) {
+			if (buffer[i]=='\r') {
+				thisClient->endFirstLineStatus = 1; // Move to waiting for the '\n'
+			} else {
+				// Received another byte of the first line
+				// Have we still got space to store it?
+				if (thisClient->bytes < FIRST_LINE_SIZE) {
+					thisClient->firstLine[thisClient->bytes] = buffer[i];
+				} else {
+					// The first line is too long, so shut down the connection rather than have a buffer overflow
+					// TODO shut down this connection
+				}
+			}
+		}
+		
+		firstLine[60]; // Eg GET /237f0c36-d661-43d2-b944-13d708c17d36 HTTP/1.1
+	int endFirstLineStatus; // 0=nothing, 1=found '\r', 2=found '\n'
+	int endHeadersStatus
+		buffer[i]
+
+		thisClient->bytes++;
 	}
 
 	// Send message bach to the client
