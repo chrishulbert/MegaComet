@@ -45,13 +45,13 @@ void openSocket(void) {
 	sd = socket(PF_INET, SOCK_STREAM, 0);
 	if (sd < 0) {
 		perror("socket error");
-		exit(-1);
+		exit(1);
 	}
 
 	// This kills "Address already in use" error message. This happens because we close the sockets
 	// first, not letting the clients close them
 	int tr=1;
-	if (setsockopt(listener,SOL_SOCKET,SO_REUSEADDR,&tr,sizeof(int)) == -1) {
+	if (setsockopt(sd,SOL_SOCKET,SO_REUSEADDR,&tr,sizeof(int)) == -1) {
 	    perror("setsockopt");
 	    exit(1);
 	}
@@ -65,14 +65,14 @@ void openSocket(void) {
 	int bindResult = bind(sd, (struct sockaddr*) &addr, sizeof(addr));
 	if (bindResult < 0) {
 		perror("bind error");
-		exit(-1);
+		exit(1);
 	}
 
 	// Start listing on the socket
 	int listenResult = listen(sd, LISTEN_BACKLOG);
 	if (listenResult < 0) {
 		perror("listen error");
-		exit(-1);
+		exit(1);
 	}
 
 	puts("Socket opened");
