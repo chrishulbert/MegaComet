@@ -48,7 +48,13 @@ void openSocket(void) {
 		exit(-1);
 	}
 
-	// TODO set the socket option so it can reuse a socket in time_wait state
+	// This kills "Address already in use" error message. This happens because we close the sockets
+	// first, not letting the clients close them
+	int tr=1;
+	if (setsockopt(listener,SOL_SOCKET,SO_REUSEADDR,&tr,sizeof(int)) == -1) {
+	    perror("setsockopt");
+	    exit(1);
+	}
 
 	// Bind the socket to the address
 	struct sockaddr_in addr;
@@ -135,9 +141,22 @@ void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int reve
 	kh_value(clientStatuses, k) = newStatus;
 
 	// Initialize and start watcher to read client requests
-	struct ev_io *w_client = (struct ev_io*) malloc (sizeof(struct ev_io));
-	ev_io_init(w_client, read_cb, client_sd, EV_READ);
-	ev_io_start(loop, w_client);
+	struct ev_io *watcherRead = calloc (1, sizeof(struct ev_io));
+	ev_io_init(watcherRead, read_cb, client_sd, EV_READ);
+	ev_io_start(loop, watcherRead);
+}
+
+// Close a connection and free the memory associated
+void closeConnection(struct ev_io *watcher) {
+	ev_io_stop(libEvLoop, watcher); // Tell libev to stop following it
+	close(watcher->fd); // Close the socket
+	// Remove the client status from the hash
+	khiter_t k = kh_get(clientStatuses, clientStatuses, watcher->fd); // Find it in the hash
+	if (k != kh_end(clientStatuses)) { // Was it in the hash? It should have been...
+		free(kh_val(clientStatuses, k)); // Free the struct
+		kh_del(clientStatuses, clientStatuses, k); // Remove it from the hash
+	}
+	free(watcher); // Free the watcher (this is last because the fd is used above, after ev_io_stop)
 }
 
 // This is called when the headers are received so we can look for a message waiting for
@@ -145,10 +164,7 @@ void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int reve
 void receivedHeaders(struct clientStatus *thisClient, struct ev_io *watcher) {
 	char *output = "HTTP/1.1 200 OK\r\nContent-Length: 42\r\nConnection: close\r\n\r\nabcdefghijklmnopqrstuvwxyz1234567890abcdef";
 	write(watcher->fd, output, strlen(output));
-
-	close(watcher->fd);
-	ev_io_stop(libEvLoop, watcher);
-	free(watcher);
+	closeConnection(watcher);
 }
 
 /* Read client message */
@@ -180,9 +196,7 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	}
 	if (read == 0) {
 		// Stop and free watcher if client socket is closing
-		close(watcher->fd); // TODO is this close necessary since the other side closed it anyway?
-		ev_io_stop(loop, watcher);
-		free(watcher);
+		closeConnection(watcher); // TODO is the socket close in this function necessary since the other side closed it anyway?
 		puts("peer closing");
 		return;
 	}
