@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <netinet/in.h>
+#include <unistd.h>
 
 #include <ev.h>
 #include "khash.h"
@@ -26,11 +27,14 @@ int sd; // The listening socket file descriptor
 // For the status of each connection, we have a hash that goes from the socket file descriptor to the below struct:
 struct clientStatus {
 	char firstLine[60]; // Eg GET /237f0c36-d661-43d2-b944-13d708c17d36 HTTP/1.1
-	int endFirstLineStatus; // 0=nothing, 1=found '\r', 2=found '\n'
-	int endHeadersStatus; // 0=nothing, 1=found '\r', 2='\n', 3=2nd '\r', 4=2nd '\n'
+	int readStatus; // 0=nothing,
+	// First line: 1=found '\r', 2=found '\n' 
+	// Reading headers: 2, 3=found '\r', 4='\n', 5=2nd '\r', 6=found 2nd '\n'
+	// Reading body: 6
+	int bytes; // The number of bytes read so far
 };
-KHASH_MAP_INIT_INT(clientStatuses, clientStatus*); // Creates the macros for dealing with this hash
-khash_t(clientStatuses) *clientStatuses; = kh_init(clientStatuses); // Malloc the hash
+KHASH_MAP_INIT_INT(clientStatuses, struct clientStatus*); // Creates the macros for dealing with this hash
+khash_t(clientStatuses) *clientStatuses; // The hash table
 
 void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents);
 void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents);
@@ -43,9 +47,11 @@ void openSocket(void) {
 		exit(-1);
 	}
 
+	// TODO set the socket option so it can reuse a socket in time_wait state
+
 	// Bind the socket to the address
 	struct sockaddr_in addr;
-	memset(&addr, 0, sizeof(addr));
+	bzero(&addr, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(PORT_NO);
 	addr.sin_addr.s_addr = INADDR_ANY;
@@ -137,13 +143,22 @@ void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	}
 
 	// Add this client's status to the hash
-	struct clientStatus *newStatus = calloc(1, sizeof(clientStatus));
+	struct clientStatus *newStatus = calloc(1, sizeof(struct clientStatus));
 	int ret;
-	kh_put(clientStatuses, clientStatuses, newStatus, &ret)
+	khiter_t k = kh_put(clientStatuses, clientStatuses, client_sd, &ret);
+	kh_value(clientStatuses, k) = newStatus;
 
 	// Initialize and start watcher to read client requests
 	ev_io_init(w_client, read_cb, client_sd, EV_READ);
 	ev_io_start(loop, w_client);
+}
+
+// This is called when the headers are received so we can look for a message waiting for
+// this person, or leave them connected until one comes, or time them out after 50s maybe?
+void receivedHeaders(struct clientStatus *thisClient, int socket) {
+	char *output = "HTTP/1.1 200 OK\r\nContent-Length: 42\r\nConnection: close\r\n\r\nabcdefghijklmnopqrstuvwxyz1234567890abcdef";
+	write(socket, output, strlen(output));
+	close(socket);
 }
 
 /* Read client message */
@@ -158,7 +173,7 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 
 	// Look up this socket's client status from the hash
 	khiter_t k = kh_get(clientStatuses, clientStatuses, watcher->fd);
-	if (k == kh_end(h)) {
+	if (k == kh_end(clientStatuses)) {
 		puts ("Couldn't find client status in hash!");
 		// TODO shut down this connection
 		return;
@@ -167,34 +182,63 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 
 	// Receive message from client socket
 	read = recv(watcher->fd, buffer, BUFFER_SIZE, 0);
-
+	
 	if (read < 0) {
 		puts ("read error");
 		// TODO shut down this connection
 		return;
 	}
-	if(read == 0) {
+	if (read == 0) {
 		// Stop and free watcher if client socket is closing
 		ev_io_stop(loop,watcher);
 		free(watcher);
-		puts("peer might closing");
+		puts("peer closing");
 		return;
 	}
 	// Go through the bytes read
 	for (int i=0; i<read; i++) {
-		// Did we just receive the '\r' and are we now waiting for the '\n' ?
-		if (thisClient->endFirstLineStatus == 1) {
+		// Are we reading (and ignoring) the rest of the headers?
+		if (thisClient->readStatus == 5) { // looking for the second \n to signify the end of headers
 			if (buffer[i]=='\n') {
-				thisClient->endFirstLineStatus = 2; // Great, now we're going thru the rest of the
+				thisClient->readStatus = 6; // Now we read the body, if any
+				receivedHeaders(thisClient, watcher->fd); // Now we can respond				
+			} else {
+				// TODO throw error and give up - '\r' not followed by '\n'	
+			}
+		}
+		if (thisClient->readStatus == 4) { // looking for the second \r to signify the end of headers, or the next header
+			if (buffer[i]=='\r') {
+				thisClient->readStatus = 5; // Waiting for the next '\n'
+			} else {
+				thisClient->readStatus = 2; // Back to reading another header line
+			}
+		}
+		if (thisClient->readStatus == 3) { // looking for the first \n
+			if (buffer[i]=='\n') {
+				thisClient->readStatus = 4; // Waiting for the next '\r'
+			} else {
+				// TODO throw error and give up - '\r' not followed by '\n'	
+			}
+		}
+		if (thisClient->readStatus == 2) { // reading (and ignoring) the rest of the headers
+			if (buffer[i]=='\r') {
+				thisClient->readStatus = 3; // Waiting for a '\n'
+			}
+		}
+		// Are we reading the first line of the header?
+		// Did we just receive the '\r' and are we now waiting for the '\n' ?
+		if (thisClient->readStatus == 1) {
+			if (buffer[i]=='\n') {
+				thisClient->readStatus = 2; // Great, now we're going thru the rest of the headers
 			} else {
 				// Bugger, it wasn't a \n. Drop the connection
 				// TODO shut down the connection
 			}
 		}
 		// Are we still receiving the first line?
-		if (thisClient->endFirstLineStatus == 0) {
+		if (thisClient->readStatus == 0) {
 			if (buffer[i]=='\r') {
-				thisClient->endFirstLineStatus = 1; // Move to waiting for the '\n'
+				thisClient->readStatus = 1; // Move to waiting for the '\n'
 			} else {
 				// Received another byte of the first line
 				// Have we still got space to store it?
@@ -207,15 +251,10 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 			}
 		}
 		
-		firstLine[60]; // Eg GET /237f0c36-d661-43d2-b944-13d708c17d36 HTTP/1.1
-	int endFirstLineStatus; // 0=nothing, 1=found '\r', 2=found '\n'
-	int endHeadersStatus
-		buffer[i]
-
 		thisClient->bytes++;
 	}
 
-	// Send message bach to the client
-	send(watcher->fd, buffer, read, 0);
-	bzero(buffer, read);
+	buffer[read]=0;
+	printf("Read: >%s< - status:%d\r\n",buffer,thisClient->readStatus);
+
 }
