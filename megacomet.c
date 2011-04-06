@@ -23,6 +23,7 @@ typedef unsigned char byte;
 // Globals (yuck!)
 struct ev_io port_watcher;
 int sd; // The listening socket file descriptor
+struct ev_loop *libEvLoop; // The main libev loop. Global so that we don't have to pass it around everywhere, slowly pushing and popping it to the stack
 
 // For the status of each connection, we have a hash that goes from the socket file descriptor to the below struct:
 struct clientStatus {
@@ -36,7 +37,7 @@ struct clientStatus {
 KHASH_MAP_INIT_INT(clientStatuses, struct clientStatus*); // Creates the macros for dealing with this hash
 khash_t(clientStatuses) *clientStatuses; // The hash table
 
-void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents);
+void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int revents);
 void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents);
 
 void openSocket(void) {
@@ -74,34 +75,21 @@ void openSocket(void) {
 // The main libev loop
 void run() {
 	// use the default event loop unless you have special needs
-	struct ev_loop *loop = ev_default_loop(0);
+	libEvLoop = ev_default_loop(0);
 
 	// Initialize and start a watcher to accepts client requests
-	ev_io_init(&port_watcher, accept_cb, sd, EV_READ);
-	ev_io_start(loop, &port_watcher);
+	ev_io_init(&port_watcher, newConnectionCallback, sd, EV_READ);
+	ev_io_start(libEvLoop, &port_watcher);
 
 	puts("Libev initialised, starting...");
 
 	// Start infinite loop
-	ev_loop(loop, 0);
+	ev_loop(libEvLoop, 0);
 }
 
 // Initialise the hash tables that are needed
 void initHashes() {
 	clientStatuses = kh_init(clientStatuses); // Malloc the hash
-
-	// int ret, is_missing;
-	// khiter_t k;
-	// khash_t(socketBytes) *h = kh_init(socketBytes); // Malloc the hash
-	// k = kh_put(socketBytes, h, 5, &ret); // Insert 5 to the table
-	// if (!ret) kh_del(socketBytes, h, k); // Delete it if it was there before we put it in
-	// kh_value(h, k) = 10; // Change it to 10
-	// k = kh_get(socketBytes, h, 10); // Get the value at 10
-	// is_missing = (k == kh_end(h)); // Is there anything there?
-	// k = kh_get(socketBytes, h, 5); // Get the value at 5
-	// kh_del(socketBytes, h, k); // Delete the value at 5
-	// for (k = kh_begin(h); k != kh_end(h); ++k) // Iterate somehow 
-	// 	if (kh_exist(h, k)) kh_value(h, k) = 1;
 }
 
 // All the setup stuff goes here
@@ -110,7 +98,7 @@ void setup() {
 	openSocket();
 }
 
-// All the shutdown stuff goes here
+// All the shutdown stuff goes here. Is it really worth bothering to clean up memory just prior to exit?
 void shutDown() {
 	kh_destroy(clientStatuses, clientStatuses); // Free it all
 }
@@ -124,9 +112,7 @@ int main() {
 }
 
 /* Accept client requests */
-void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
-	struct ev_io *w_client = (struct ev_io*) malloc (sizeof(struct ev_io));
-
+void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	if (EV_ERROR & revents) {
 		puts("got invalid event");
 		return;
@@ -149,22 +135,26 @@ void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	kh_value(clientStatuses, k) = newStatus;
 
 	// Initialize and start watcher to read client requests
+	struct ev_io *w_client = (struct ev_io*) malloc (sizeof(struct ev_io));
 	ev_io_init(w_client, read_cb, client_sd, EV_READ);
 	ev_io_start(loop, w_client);
 }
 
 // This is called when the headers are received so we can look for a message waiting for
 // this person, or leave them connected until one comes, or time them out after 50s maybe?
-void receivedHeaders(struct clientStatus *thisClient, int socket) {
+void receivedHeaders(struct clientStatus *thisClient, struct ev_io *watcher) {
 	char *output = "HTTP/1.1 200 OK\r\nContent-Length: 42\r\nConnection: close\r\n\r\nabcdefghijklmnopqrstuvwxyz1234567890abcdef";
-	write(socket, output, strlen(output));
-	close(socket);
+	write(watcher->fd, output, strlen(output));
+
+	close(watcher->fd);
+	ev_io_stop(libEvLoop, watcher);
+	free(watcher);
 }
 
 /* Read client message */
 void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	byte buffer[BUFFER_SIZE];
-	ssize_t read;
+	size_t read;
 
 	if (EV_ERROR & revents) {
 		puts ("got invalid event");
@@ -190,7 +180,8 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	}
 	if (read == 0) {
 		// Stop and free watcher if client socket is closing
-		ev_io_stop(loop,watcher);
+		close(watcher->fd); // TODO is this close necessary since the other side closed it anyway?
+		ev_io_stop(loop, watcher);
 		free(watcher);
 		puts("peer closing");
 		return;
@@ -201,7 +192,7 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 		if (thisClient->readStatus == 5) { // looking for the second \n to signify the end of headers
 			if (buffer[i]=='\n') {
 				thisClient->readStatus = 6; // Now we read the body, if any
-				receivedHeaders(thisClient, watcher->fd); // Now we can respond				
+				receivedHeaders(thisClient, watcher); // Now we can respond				
 			} else {
 				// TODO throw error and give up - '\r' not followed by '\n'	
 			}
@@ -250,11 +241,6 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 				}
 			}
 		}
-		
 		thisClient->bytes++;
 	}
-
-	buffer[read]=0;
-	printf("Read: >%s< - status:%d\r\n",buffer,thisClient->readStatus);
-
 }
