@@ -9,3 +9,22 @@ It requires libev to compile. So far, only being developed on my Mac. When it ge
 
 https://github.com/chrishulbert/MegaComet
 http://software.schmorp.de/pkg/libev.html
+
+Architecture
+------------
+
+My ideas are:
+* Simple = scalable ("no code is faster than no code")
+* Scale through processes, not threads (like node.js - although i have to admit this is largely for simplicity's sake too)
+* Bend the rules of HTTP a bit, for the sake of speed (eg no 'date' header returned)
+* Best-effort delivery of messages. Eg this is to be appropriate for real time chat and channel changing, not appropriate for financial transactions. Engineering is all about trade-offs.
+* etc... (you get the picture: hacky solutions over correctness)
+
+In order to do this, i picture the following on an EC2 'large' server:
+
+* 8 instances of MegaComet workers running, each listening on a different port, each of which has ~100k connections active.
+* TO TEST: At this stage, 8 is a guesstimate for the 'best' number of workers. Maybe make it configurable? Would 128 be best, so we could keep each client below the C10K barrier?
+* One instance of MegaComet manager running. This is responsible for remembering which client is connected to which worker.
+* Clients will randomly long-poll (JSONP) directly to one of the 8 workers. Upon connecting, the worker tells the manager it has that client. Upon non-normal (only) port closing, the worker tells the manager that client is gone.
+* Manager queues messages. Whenever a worker says a client has connected, it sends it any messages queued. Whenever a message arrives, it checks to see if that client is connected already, and if so sends it straight through. If the client isn't connected, the message is queued for a configurable time (default 1 minute).
+* TO TEST: Will the single server become a bottleneck? What if we allowed >1 ?
