@@ -27,4 +27,7 @@ In order to do this, i picture the following on an EC2 'large' server:
 * One instance of MegaComet manager running. This is responsible for remembering which client is connected to which worker.
 * Clients will randomly long-poll (JSONP) directly to one of the 8 workers. Upon connecting, the worker tells the manager it has that client. Upon non-normal (only) port closing, the worker tells the manager that client is gone.
 * Manager queues messages. Whenever a worker says a client has connected, it sends it any messages queued. Whenever a message arrives, it checks to see if that client is connected already, and if so sends it straight through. If the client isn't connected, the message is queued for a configurable time (default 1 minute).
+* Manager > Client to communicate using simple fixed-width-fields binary protocol
+* Your app > Manager to communicate using JSON
+* Manager not necessarily written in C ? Something simple eg C# or Java or Python or Ruby ?
 * TO TEST: Will the single server become a bottleneck? What if we allowed >1 ?
