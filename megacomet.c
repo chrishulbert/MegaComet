@@ -12,17 +12,17 @@
 #include <ev.h>
 #include "khash.h"
 
-#define PORT_NO 8080 // Which port are we listening on
+#define COMET_BASE_PORT_NO 8000 // Which port range are we listening on for clients
 #define BUFFER_SIZE 1024 // The size of the read buffer
 #define LISTEN_BACKLOG 1024 // The number of pending connections that can be queued up at any one time 
 #define FIRST_LINE_SIZE 60 // The length of the first line allowed (the GET line) - each byte here equals a meg when multiplied by 1m!
+#define MANAGER_BASE_PORT_NO 9000 // The port we are to listen for the manager to talk to us on
 
 // Useful utilities
 typedef unsigned char byte;
 
 // Globals (yuck!)
-struct ev_io port_watcher;
-int sd; // The listening socket file descriptor
+int cometSd; // The listening socket file descriptor
 struct ev_loop *libEvLoop; // The main libev loop. Global so that we don't have to pass it around everywhere, slowly pushing and popping it to the stack
 
 // For the status of each connection, we have a hash that goes from the socket file descriptor to the below struct:
@@ -42,16 +42,16 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents);
 
 void openSocket(void) {
 	// Open the socket file descriptor
-	sd = socket(PF_INET, SOCK_STREAM, 0);
-	if (sd < 0) {
-		perror("socket error");
+	cometSd = socket(PF_INET, SOCK_STREAM, 0);
+	if (cometSd < 0) {
+		perror("comet socket error");
 		exit(1);
 	}
 
 	// This kills "Address already in use" error message. This happens because we close the sockets
 	// first, not letting the clients close them
 	int tr=1;
-	if (setsockopt(sd,SOL_SOCKET,SO_REUSEADDR,&tr,sizeof(int)) == -1) {
+	if (setsockopt(cometSd,SOL_SOCKET,SO_REUSEADDR,&tr,sizeof(int)) == -1) {
 	    perror("setsockopt");
 	    exit(1);
 	}
@@ -60,16 +60,16 @@ void openSocket(void) {
 	struct sockaddr_in addr;
 	bzero(&addr, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(PORT_NO);
+	addr.sin_port = htons(COMET_BASE_PORT_NO);
 	addr.sin_addr.s_addr = INADDR_ANY;
-	int bindResult = bind(sd, (struct sockaddr*) &addr, sizeof(addr));
+	int bindResult = bind(cometSd, (struct sockaddr*) &addr, sizeof(addr));
 	if (bindResult < 0) {
 		perror("bind error");
 		exit(1);
 	}
 
 	// Start listing on the socket
-	int listenResult = listen(sd, LISTEN_BACKLOG);
+	int listenResult = listen(cometSd, LISTEN_BACKLOG);
 	if (listenResult < 0) {
 		perror("listen error");
 		exit(1);
@@ -84,8 +84,9 @@ void run() {
 	libEvLoop = ev_default_loop(0);
 
 	// Initialize and start a watcher to accepts client requests
-	ev_io_init(&port_watcher, newConnectionCallback, sd, EV_READ);
-	ev_io_start(libEvLoop, &port_watcher);
+	struct ev_io cometPortWatcher;
+	ev_io_init(&cometPortWatcher, newConnectionCallback, cometSd, EV_READ);
+	ev_io_start(libEvLoop, &cometPortWatcher);
 
 	puts("Libev initialised, starting...");
 
