@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 
 #include <ev.h>
@@ -16,13 +17,13 @@
 #define BUFFER_SIZE 1024 // The size of the read buffer
 #define LISTEN_BACKLOG 1024 // The number of pending connections that can be queued up at any one time 
 #define FIRST_LINE_SIZE 60 // The length of the first line allowed (the GET line) - each byte here equals a meg when multiplied by 1m!
-#define MANAGER_BASE_PORT_NO 9000 // The port we are to listen for the manager to talk to us on
+#define MANAGER_PORT_NO 9000 // The port we are to connect to the manager to talk to us on
 
 // Useful utilities
 typedef unsigned char byte;
 
 // Globals (yuck!)
-int cometSd; // The listening socket file descriptor
+int cometSd, managerSd; // The listening socket file descriptor
 struct ev_loop *libEvLoop; // The main libev loop. Global so that we don't have to pass it around everywhere, slowly pushing and popping it to the stack
 
 // For the status of each connection, we have a hash that goes from the socket file descriptor to the below struct:
@@ -40,7 +41,8 @@ khash_t(clientStatuses) *clientStatuses; // The hash table
 void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int revents);
 void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents);
 
-void openSocket(void) {
+// Open the listening socket for incoming comet connections
+void openCometSocket(void) {
 	// Open the socket file descriptor
 	cometSd = socket(PF_INET, SOCK_STREAM, 0);
 	if (cometSd < 0) {
@@ -78,6 +80,33 @@ void openSocket(void) {
 	puts("Socket opened");
 }
 
+// Open the connection to the manager
+void openManagerSocket(void) {
+	// Open the socket file descriptor
+	cometSd = socket(PF_INET, SOCK_STREAM, 0);
+	if (cometSd < 0) {
+		perror("manager socket error");
+		exit(1);
+	}
+
+	// Build the address of the manager
+	struct sockaddr_in addr;
+	bzero(&addr, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(COMET_BASE_PORT_NO);
+	addr.sin_addr.s_addr = INADDR_LOOPBACK;
+
+	// Connect to the manager
+	puts ("Connecting to manager...");
+	int connectResult = connect(cometSd, (struct sockaddr*) &addr, sizeof addr);
+	if (connectResult < 0) {
+		perror("Could not connect to manager. Start the manager first!");
+		exit(1);
+	}
+
+	puts("Manager connected");
+}
+
 // The main libev loop
 void run() {
 	// use the default event loop unless you have special needs
@@ -102,12 +131,16 @@ void initHashes() {
 // All the setup stuff goes here
 void setup() {
 	initHashes();
-	openSocket();
+	openCometSocket();
+	openManagerSocket();
 }
 
 // All the shutdown stuff goes here. Is it really worth bothering to clean up memory just prior to exit?
 void shutDown() {
+	close(cometSd);
+	close(managerSd);
 	kh_destroy(clientStatuses, clientStatuses); // Free it all
+	// Todo clean up the libev stuff
 }
 
 // Everyone's favourite function!
