@@ -14,7 +14,9 @@
 #include "khash.h"
 
 #define COMET_BASE_PORT_NO 8000 // Which port range are we listening on for clients
-#define BUFFER_SIZE 1024 // The size of the read buffer
+#define MAX_CLIENT_ID_LEN 128 // Length of the client id's
+#define MAX_MESSAGE_LEN 1024 // Length of the message
+#define BUFFER_SIZE 2048 // Size of the chunks we read incoming commands in. Should be big enough for a full command
 #define LISTEN_BACKLOG 1024 // The number of pending connections that can be queued up at any one time 
 #define FIRST_LINE_SIZE 60 // The length of the first line allowed (the GET line) - each byte here equals a meg when multiplied by 1m!
 #define MANAGER_PORT_NO 9000 // The port we are to connect to the manager to talk to us on
@@ -22,17 +24,20 @@
 // Useful utilities
 typedef unsigned char byte;
 
-// Globals (yuck!)
+// Globals
 int cometSd, managerSd; // The listening socket file descriptor
 struct ev_loop *libEvLoop; // The main libev loop. Global so that we don't have to pass it around everywhere, slowly pushing and popping it to the stack
 
 // For the status of each connection, we have a hash that goes from the socket file descriptor to the below struct:
 struct clientStatus {
-	char firstLine[60]; // Eg GET /237f0c36-d661-43d2-b944-13d708c17d36 HTTP/1.1
-	int readStatus; // 0=nothing,
-	// First line: 1=found '\r', 2=found '\n' 
-	// Reading headers: 2, 3=found '\r', 4='\n', 5=2nd '\r', 6=found 2nd '\n'
-	// Reading body: 6
+	char clientId[MAX_CLIENT_ID_LEN+1]; // Eg will be 'myClientId' for: GET /myClientId.js?c=cachekiller HTTP/1.1
+	int clientIdLen; // Length of the client id
+	int readStatus; // 0=nothing, waiting for '/'
+	// First line: 10=found '/', reading client id
+	// 20=found '.', reading the rest of the first line
+	// First line: 100=found '\r', 200=found '\n' 
+	// Reading headers: 200, 300=found '\r', 400='\n', 500=2nd '\r', 1000=found 2nd '\n'
+	// Ready to respond: 1000
 	int bytes; // The number of bytes read so far
 };
 KHASH_MAP_INIT_INT(clientStatuses, struct clientStatus*); // Creates the macros for dealing with this hash
@@ -117,7 +122,7 @@ void run() {
 	ev_io_init(&cometPortWatcher, newConnectionCallback, cometSd, EV_READ);
 	ev_io_start(libEvLoop, &cometPortWatcher);
 
-	puts("Libev initialised, starting...");
+	puts("Ready");
 
 	// Start infinite loop
 	ev_loop(libEvLoop, 0);
@@ -132,7 +137,7 @@ void initHashes() {
 void setup() {
 	initHashes();
 	openCometSocket();
-	openManagerSocket();
+	//openManagerSocket();
 }
 
 // All the shutdown stuff goes here. Is it really worth bothering to clean up memory just prior to exit?
@@ -196,9 +201,11 @@ void closeConnection(struct ev_io *watcher) {
 // This is called when the headers are received so we can look for a message waiting for
 // this person, or leave them connected until one comes, or time them out after 50s maybe?
 void receivedHeaders(struct clientStatus *thisClient, struct ev_io *watcher) {
+	printf ("Connected by >%s<\r\n", thisClient->clientId);
+
+	// TODO check to see if there's a message queued for this person
 	char *output = "HTTP/1.1 200 OK\r\nContent-Length: 42\r\nConnection: close\r\n\r\nabcdefghijklmnopqrstuvwxyz1234567890abcdef";
 	write(watcher->fd, output, strlen(output));
-	closeConnection(watcher);
 }
 
 /* Read client message */
@@ -237,56 +244,93 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	// Go through the bytes read
 	for (int i=0; i<read; i++) {
 		// Are we reading (and ignoring) the rest of the headers?
-		if (thisClient->readStatus == 5) { // looking for the second \n to signify the end of headers
+		if (thisClient->readStatus == 500) { // looking for the second \n to signify the end of headers
 			if (buffer[i]=='\n') {
-				thisClient->readStatus = 6; // Now we read the body, if any
-				receivedHeaders(thisClient, watcher); // Now we can respond				
+				thisClient->readStatus = 1000; // Now we are ready to respond
+				receivedHeaders(thisClient, watcher); // Now we can respond
+				closeConnection(watcher);
+				return; // No point processing the rest of the stuff from the client: TODO what about skipping everything after the first line?
 			} else {
 				// TODO throw error and give up - '\r' not followed by '\n'	
 			}
 		}
-		if (thisClient->readStatus == 4) { // looking for the second \r to signify the end of headers, or the next header
+		if (thisClient->readStatus == 400) { // looking for the second \r to signify the end of headers, or the next header
 			if (buffer[i]=='\r') {
-				thisClient->readStatus = 5; // Waiting for the next '\n'
+				thisClient->readStatus = 500; // Waiting for the next '\n'
 			} else {
-				thisClient->readStatus = 2; // Back to reading another header line
+				thisClient->readStatus = 200; // Back to reading another header line
 			}
 		}
-		if (thisClient->readStatus == 3) { // looking for the first \n
+		if (thisClient->readStatus == 300) { // looking for the first \n
 			if (buffer[i]=='\n') {
-				thisClient->readStatus = 4; // Waiting for the next '\r'
+				thisClient->readStatus = 400; // Waiting for the next '\r'
 			} else {
 				// TODO throw error and give up - '\r' not followed by '\n'	
 			}
 		}
-		if (thisClient->readStatus == 2) { // reading (and ignoring) the rest of the headers
+		if (thisClient->readStatus == 200) { // reading (and ignoring) the rest of the headers
 			if (buffer[i]=='\r') {
-				thisClient->readStatus = 3; // Waiting for a '\n'
+				thisClient->readStatus = 300; // Waiting for a '\n'
 			}
 		}
 		// Are we reading the first line of the header?
 		// Did we just receive the '\r' and are we now waiting for the '\n' ?
-		if (thisClient->readStatus == 1) {
+		if (thisClient->readStatus == 100) {
 			if (buffer[i]=='\n') {
-				thisClient->readStatus = 2; // Great, now we're going thru the rest of the headers
+				thisClient->readStatus = 200; // Great, now we're going thru the rest of the headers
 			} else {
 				// Bugger, it wasn't a \n. Drop the connection
 				// TODO shut down the connection
 			}
 		}
-		// Are we still receiving the first line?
-		if (thisClient->readStatus == 0) {
+		// Reading the rest of the first header line, waiting for the '\r'
+		if (thisClient->readStatus == 20) {
 			if (buffer[i]=='\r') {
-				thisClient->readStatus = 1; // Move to waiting for the '\n'
+				thisClient->readStatus = 100; // Now waiting for the '\n'
+			}
+		}
+		// Reading the '.js' after the client id
+		if (thisClient->readStatus == 12) {
+			if (buffer[i]=='s') {
+				thisClient->readStatus=20;
 			} else {
-				// Received another byte of the first line
-				// Have we still got space to store it?
-				if (thisClient->bytes < FIRST_LINE_SIZE) {
-					thisClient->firstLine[thisClient->bytes] = buffer[i];
+				// drop the connection, they might be trying to access the favicon or something annoying like that	
+				puts ("Not a .js request!");
+				closeConnection(watcher);
+				return;
+			}
+		}
+		if (thisClient->readStatus == 11) {
+			if (buffer[i]=='j') {
+				thisClient->readStatus=12;
+			} else {
+				// drop the connection, they might be trying to access the favicon or something annoying like that	
+				puts ("Not a .js request!");
+				closeConnection(watcher);
+				return;
+			}
+		}
+		// Reading the client id up to the '.js'
+		if (thisClient->readStatus == 10) {
+			if (buffer[i]=='.') {
+				thisClient->clientId[thisClient->clientIdLen]=0; // Put the null terminator on the end of the client id
+				thisClient->readStatus = 11; // now reading the rest of the first header line, waiting for the '\r'
+			} else {
+				// Record the client id
+				if (thisClient->clientIdLen < MAX_CLIENT_ID_LEN) {
+					thisClient->clientId[thisClient->clientIdLen] = buffer[i];
+					thisClient->clientIdLen++;
 				} else {
-					// The first line is too long, so shut down the connection rather than have a buffer overflow
-					// TODO shut down this connection
+					// Client id too long
+					// TODO shut down the connection and print a warning
 				}
+			}
+		}
+		// Are we receiving the first line's "GET /" part?
+		if (thisClient->readStatus == 0) {
+			if (buffer[i]=='/') {
+				thisClient->readStatus = 10; // Reading the client id now
+				thisClient->clientIdLen = 0;
 			}
 		}
 		thisClient->bytes++;

@@ -31,3 +31,18 @@ In order to do this, i picture the following on an EC2 'large' server:
 * Your app > Manager to communicate using JSON
 * Manager not necessarily written in C ? Something simple eg C# or Java or Python or Ruby ?
 * TO TEST: Will the single server become a bottleneck? What if we allowed >1 ?
+
+* TODO idea: rather than have the megamanager keep track of which client is connected to which worker, should we have a reproducible hash of the client id which always determines the worker? Is this necessary?
+
+Manager protocol
+----------------
+
+Workers are expected to connect to the manager and specify their worker number:
+1 n
+	Where N is the worker number (single byte)
+When the app wants to send a message to the manager to send to the appropriate worker:
+2 c m
+	Where c is the client identifier. This is a null terminated ascii string (or utf8).
+	Cannot contain a '.' for simplicity of parsing the HTTP messages.
+	TODO will null termination work with utf8?
+	m is the message, as a null terminated ascii/utf8 string.

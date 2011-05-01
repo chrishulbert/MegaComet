@@ -1,0 +1,34 @@
+<html>
+<body>
+<script>
+var val='supercalifragilisticexpialidocious';
+document.write('Hashing: ' + val);
+var h=0;
+for (var i=0;i<val.length;i++) {
+	var c = val.charCodeAt(i);
+	h = (((h<<5)&0xffffffff)-h+c)&0xffffffff;
+}
+document.write ('<h1>hash: ' +h+'</h1>');
+document.write ('<h1>should be: 1077910243</h1>');
+
+function __ac_X31_hash_string(str) {
+	var h=0;
+	for (var i=0;i<str.length;i++) {
+		h = (((h<<5)&0xffffffff)-h+str.charCodeAt(i))&0xffffffff;
+	}
+	return h;
+}
+function whichWorker(clientId) {
+	return __ac_X31_hash_string(clientId) % 8;
+}
+</script>
+
+<p>Original C code:</p>
+<pre>
+static inline khint_t __ac_X31_hash_string(const char *s)
+{
+	khint_t h = *s;
+	if (h) for (++s ; *s; ++s) h = (h << 5) - h + *s;
+	return h;
+}
+</pre>
