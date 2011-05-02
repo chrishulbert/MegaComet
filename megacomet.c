@@ -20,31 +20,54 @@
 #define LISTEN_BACKLOG 1024 // The number of pending connections that can be queued up at any one time 
 #define FIRST_LINE_SIZE 60 // The length of the first line allowed (the GET line) - each byte here equals a meg when multiplied by 1m!
 #define MANAGER_PORT_NO 9000 // The port we are to connect to the manager to talk to us on
+#define HTTP_TEMPLATE "HTTP/1.1 200 OK\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s" // The http response
+#define HTTP_OVERHEAD 80 // The size of the above line, plus a few bytes
+#define HTTP_RESPONSE_SIZE (MAX_MESSAGE_LEN + HTTP_OVERHEAD) // Size of the http response buffer
 
 // Useful utilities
 typedef unsigned char byte;
 
 // Globals
+int workerNo; // Which worker number this is 
 int cometSd, managerSd; // The listening socket file descriptor
 struct ev_loop *libEvLoop; // The main libev loop. Global so that we don't have to pass it around everywhere, slowly pushing and popping it to the stack
+struct ev_io cometPortWatcher; // The watcher for incoming comet conns
+struct ev_io managerPortWatcher; // The watcher for incoming manager commands
 
-// For the status of each connection, we have a hash that goes from the socket file descriptor to the below struct:
-struct clientStatus {
-	char clientId[MAX_CLIENT_ID_LEN+1]; // Eg will be 'myClientId' for: GET /myClientId.js?c=cachekiller HTTP/1.1
-	int clientIdLen; // Length of the client id
+// Stuff for the manager connection
+byte commandClientId[MAX_CLIENT_ID_LEN+1];
+int commandClientIdLen;
+byte commandMessage[MAX_MESSAGE_LEN+1];
+int commandMessageLen;
+int commandStatus=0; // 0 = nothing, waiting
+// 200=read a '2', reading the client id
+// 201=read the client, reading the message
+
+// For creating the http response message
+char httpResponse[HTTP_RESPONSE_SIZE];
+
+// For the status of each connection, we have the below struct:
+// TODO we could extend the watcher struct and store the below stuff in it as per the libev docs, save a little ram?
+typedef struct clientStatus {
 	int readStatus; // 0=nothing, waiting for '/'
-	// First line: 10=found '/', reading client id
-	// 20=found '.', reading the rest of the first line
-	// First line: 100=found '\r', 200=found '\n' 
-	// Reading headers: 200, 300=found '\r', 400='\n', 500=2nd '\r', 1000=found 2nd '\n'
-	// Ready to respond: 1000
-	int bytes; // The number of bytes read so far
-};
-KHASH_MAP_INIT_INT(clientStatuses, struct clientStatus*); // Creates the macros for dealing with this hash
+		// First line: 10=found '/', reading client id
+		// 20=found '.', reading the rest of the first line
+		// First line: 100=found '\r', 200=found '\n' 
+		// Reading headers: 200, 300=found '\r', 400='\n', 500=2nd '\r', 1000=found 2nd '\n'
+		// Ready to respond: 1000
+	int socket; // The socket for this incoming client
+	int clientIdLen; // Length of the client id
+	char clientId[MAX_CLIENT_ID_LEN+1]; // Eg will be 'myClientId' for: GET /myClientId.js?c=cachekiller HTTP/1.1
+	void *watcher; // The ev_io watcher. TODO remove this when I combine the watcher with the clientstatus structs
+} clientStatus;
+
+// The hash of client id's to client statuses
+KHASH_MAP_INIT_STR(clientStatuses, clientStatus*); // Creates the macros for dealing with this hash
 khash_t(clientStatuses) *clientStatuses; // The hash table
 
 void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int revents);
 void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents);
+void managerCallback(struct ev_loop *loop, struct ev_io *watcher, int revents);
 
 // Open the listening socket for incoming comet connections
 void openCometSocket(void) {
@@ -88,8 +111,8 @@ void openCometSocket(void) {
 // Open the connection to the manager
 void openManagerSocket(void) {
 	// Open the socket file descriptor
-	cometSd = socket(PF_INET, SOCK_STREAM, 0);
-	if (cometSd < 0) {
+	managerSd = socket(PF_INET, SOCK_STREAM, 0);
+	if (managerSd < 0) {
 		perror("manager socket error");
 		exit(1);
 	}
@@ -98,18 +121,26 @@ void openManagerSocket(void) {
 	struct sockaddr_in addr;
 	bzero(&addr, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(COMET_BASE_PORT_NO);
-	addr.sin_addr.s_addr = INADDR_LOOPBACK;
+	addr.sin_port = htons(MANAGER_PORT_NO);
+	inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr.s_addr);
 
 	// Connect to the manager
 	puts ("Connecting to manager...");
-	int connectResult = connect(cometSd, (struct sockaddr*) &addr, sizeof addr);
+	int connectResult = connect(managerSd, (struct sockaddr*) &addr, sizeof addr);
 	if (connectResult < 0) {
 		perror("Could not connect to manager. Start the manager first!");
 		exit(1);
 	}
 
 	puts("Manager connected");
+
+	// Now tell the manager which worker i am
+	byte msg[2];
+	msg[0]=1;
+	msg[1]=workerNo;
+	write(managerSd, msg, 2);
+
+	puts("Manager notified");
 }
 
 // The main libev loop
@@ -117,10 +148,13 @@ void run() {
 	// use the default event loop unless you have special needs
 	libEvLoop = ev_default_loop(0);
 
-	// Initialize and start a watcher to accepts client requests
-	struct ev_io cometPortWatcher;
+	// The watcher for incoming comet connections
 	ev_io_init(&cometPortWatcher, newConnectionCallback, cometSd, EV_READ);
 	ev_io_start(libEvLoop, &cometPortWatcher);
+
+	// The watcher for manager commands on the already-open socket
+	ev_io_init(&managerPortWatcher, managerCallback, managerSd, EV_READ);
+	ev_io_start(libEvLoop, &managerPortWatcher);
 
 	puts("Ready");
 
@@ -135,9 +169,10 @@ void initHashes() {
 
 // All the setup stuff goes here
 void setup() {
+	workerNo = 3; // TODO get this from the args
 	initHashes();
 	openCometSocket();
-	//openManagerSocket();
+	openManagerSocket();
 }
 
 // All the shutdown stuff goes here. Is it really worth bothering to clean up memory just prior to exit?
@@ -173,39 +208,147 @@ void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int reve
 		return;
 	}
 
-	// Add this client's status to the hash
-	struct clientStatus *newStatus = calloc(1, sizeof(struct clientStatus));
-	int ret;
-	khiter_t k = kh_put(clientStatuses, clientStatuses, client_sd, &ret);
-	kh_value(clientStatuses, k) = newStatus;
+	// Create a client status
+	// TODO rather than freeing/mallocing these, have a pool of them?
+	clientStatus *newStatus = calloc(1, sizeof(clientStatus));
+	newStatus->socket = client_sd;
 
 	// Initialize and start watcher to read client requests
 	struct ev_io *watcherRead = calloc (1, sizeof(struct ev_io));
 	ev_io_init(watcherRead, read_cb, client_sd, EV_READ);
 	ev_io_start(loop, watcherRead);
+	watcherRead->data = newStatus; // Make the watcher point to the status for now TODO combine watcher and status
+	newStatus->watcher = watcherRead; // Make the status point to the watcher for now TODO combine watcher and status
 }
 
 // Close a connection and free the memory associated
 void closeConnection(struct ev_io *watcher) {
 	ev_io_stop(libEvLoop, watcher); // Tell libev to stop following it
 	close(watcher->fd); // Close the socket
-	// Remove the client status from the hash
-	khiter_t k = kh_get(clientStatuses, clientStatuses, watcher->fd); // Find it in the hash
-	if (k != kh_end(clientStatuses)) { // Was it in the hash? It should have been...
-		free(kh_val(clientStatuses, k)); // Free the struct
-		kh_del(clientStatuses, clientStatuses, k); // Remove it from the hash
+
+	// Remove the client status from the hash if it's a waiting connection
+	// TODO this strikes me as kinda slow to have to do a hash lookup to find it to free it. Maybe in the clientStatus
+	// we could store the hash iterator or something to make it easier to remove later? Or would that not work
+	// since the hash would have grown and changed since the start of that connection?
+	if (((clientStatus*)(watcher->data))->readStatus==1000) { // Only ones waiting a message (1000) are in the hash
+		khiter_t k = kh_get(clientStatuses, clientStatuses, ((clientStatus*)(watcher->data))->clientId); // Find it in the hash
+		if (k != kh_end(clientStatuses)) { // Was it in the hash?
+			kh_del(clientStatuses, clientStatuses, k); // Remove it from the hash
+		}
 	}
+
+	free(watcher->data); // Free the clientStatus struct
 	free(watcher); // Free the watcher (this is last because the fd is used above, after ev_io_stop)
+}
+
+// Called when the manager sends a complete message
+void messageArrivedFromManager() {
+	printf ("Message arrived: >%s< for >%s<\r\n", commandMessage, commandClientId);
+
+	// See if the client is connected, if so immediately forward
+	khiter_t k = kh_get(clientStatuses, clientStatuses, (char*)commandClientId); // Find it in the hash
+	if (k != kh_end(clientStatuses)) { // Was it in the hash?
+		clientStatus* status = kh_value(clientStatuses, k); // Grab the clientStatus from the hash
+		int socket = status->socket; // Grab the socket from the clientStatus
+		snprintf(httpResponse, HTTP_RESPONSE_SIZE, HTTP_TEMPLATE, commandMessageLen, commandMessage); // Compose the response message
+		write(socket, httpResponse, strlen(httpResponse)); // Send it
+		closeConnection(status->watcher); // Close the conn
+	}
+
+	// If not, add to a queue TODO
+}
+
+// This gets called when there's an incoming command from the manager
+void managerCallback(struct ev_loop *loop, struct ev_io *watcher, int revents) {
+	byte buffer[BUFFER_SIZE];
+	size_t read;
+
+	if (EV_ERROR & revents) {
+		puts ("got invalid event");
+		return;
+	}
+
+	// Receive message from client socket
+	read = recv(managerSd, buffer, BUFFER_SIZE, 0);
+	
+	if (read < 0) {
+		puts ("manager read error");
+		// TODO reconnect to the manager?
+		// Or should i exit, and let a monitoring script look after re-launching?
+		return;
+	}
+	if (read == 0) {
+		puts ("manager connection closing");
+		// TODO reconnect to the manager?
+		// Or should i exit, and let a monitoring script look after re-launching?
+		// I'm thinking i should exit because the manager has probably died
+		return;
+	}
+	// Go through the bytes read and parse what the client is sending us
+	for (int i=0; i<read; i++) {
+		if (commandStatus==0) {
+			if (buffer[i]==2) { // Start of the mgr sending a message
+				commandStatus = 200;
+				commandClientIdLen = 0;
+				commandMessageLen = 0;
+				continue;				
+			}
+		}
+		if (commandStatus==200) { // We are waiting for the mgr to send a client id
+			if (buffer[i]==0) {
+				commandClientId[commandClientIdLen] = 0; // Add the null terminator
+				commandStatus=201; // Now wait for the message	
+				continue;
+			} else {
+				if (commandClientIdLen < MAX_CLIENT_ID_LEN) {
+					commandClientId[commandClientIdLen] = buffer[i];
+					commandClientIdLen ++;
+					continue;
+				} else {
+					// Buffer overrun on the client id, so put the error
+					puts("Buffer overrun on the client id from the mgr");
+					commandStatus=0;
+					continue;
+				}
+			}
+		}
+		if (commandStatus==201) { // We are waiting for the app sending a message
+			if (buffer[i]==0) {
+				commandMessage[commandMessageLen] = 0; // Add the null terminator
+				messageArrivedFromManager(); // Send the message to the correct client
+				commandStatus=0; // Now wait for the next command	
+				continue;
+			} else {
+				if (commandMessageLen < MAX_MESSAGE_LEN) {
+					commandMessage[commandMessageLen] = buffer[i];
+					commandMessageLen ++;
+					continue;
+				} else {
+					// Buffer overrun on the message, so put the error and kill this connection todo
+					puts("Buffer overrun on the message from the mgr");
+					commandStatus=0;
+					continue;
+				}
+			}
+		}
+		// If it got to the end of the loop here, then the manager has sent a malformed message so lets reset the parser
+		commandStatus = 0;
+	} // end of the for loop
 }
 
 // This is called when the headers are received so we can look for a message waiting for
 // this person, or leave them connected until one comes, or time them out after 50s maybe?
-void receivedHeaders(struct clientStatus *thisClient, struct ev_io *watcher) {
+void receivedHeaders(clientStatus *thisClient, struct ev_io *watcher) {
 	printf ("Connected by >%s<\r\n", thisClient->clientId);
 
 	// TODO check to see if there's a message queued for this person
-	char *output = "HTTP/1.1 200 OK\r\nContent-Length: 42\r\nConnection: close\r\n\r\nabcdefghijklmnopqrstuvwxyz1234567890abcdef";
-	write(watcher->fd, output, strlen(output));
+	// if so, send it and drop the connection
+	// TODO when droping the connection, somehow tell closeConnection not to bother removing it from the hash
+
+	// If there's no message, then add their client id to the hash for later
+	int ret;
+	khiter_t k = kh_put(clientStatuses, clientStatuses, thisClient->clientId, &ret);
+	kh_value(clientStatuses, k) = thisClient;
 }
 
 /* Read client message */
@@ -218,14 +361,7 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 		return;
 	}
 
-	// Look up this socket's client status from the hash
-	khiter_t k = kh_get(clientStatuses, clientStatuses, watcher->fd);
-	if (k == kh_end(clientStatuses)) {
-		puts ("Couldn't find client status in hash!");
-		// TODO shut down this connection
-		return;
-	}
-	struct clientStatus *thisClient = kh_val(clientStatuses, k);
+	struct clientStatus *thisClient = (clientStatus*)watcher->data;
 
 	// Receive message from client socket
 	read = recv(watcher->fd, buffer, BUFFER_SIZE, 0);
@@ -248,7 +384,6 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 			if (buffer[i]=='\n') {
 				thisClient->readStatus = 1000; // Now we are ready to respond
 				receivedHeaders(thisClient, watcher); // Now we can respond
-				closeConnection(watcher);
 				return; // No point processing the rest of the stuff from the client: TODO what about skipping everything after the first line?
 			} else {
 				// TODO throw error and give up - '\r' not followed by '\n'	
@@ -333,6 +468,5 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 				thisClient->clientIdLen = 0;
 			}
 		}
-		thisClient->bytes++;
 	}
 }
