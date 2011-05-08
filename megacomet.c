@@ -49,16 +49,16 @@ char httpResponse[HTTP_RESPONSE_SIZE];
 // For the status of each connection, we have the below struct:
 // TODO we could extend the watcher struct and store the below stuff in it as per the libev docs, save a little ram?
 typedef struct clientStatus {
+	ev_io io; // The IO watcher. This is first so that when the callback is called, we can cast it to a clientStatus.
 	int readStatus; // 0=nothing, waiting for '/'
 		// First line: 10=found '/', reading client id
 		// 20=found '.', reading the rest of the first line
 		// First line: 100=found '\r', 200=found '\n' 
 		// Reading headers: 200, 300=found '\r', 400='\n', 500=2nd '\r', 1000=found 2nd '\n'
 		// Ready to respond: 1000
-	int socket; // The socket for this incoming client
+	//int zzsocket; // The socket for this incoming client
 	int clientIdLen; // Length of the client id
 	char clientId[MAX_CLIENT_ID_LEN+1]; // Eg will be 'myClientId' for: GET /myClientId.js?c=cachekiller HTTP/1.1
-	void *watcher; // The ev_io watcher. TODO remove this when I combine the watcher with the clientstatus structs
 } clientStatus;
 
 // The hash of client id's to client statuses
@@ -66,7 +66,7 @@ KHASH_MAP_INIT_STR(clientStatuses, clientStatus*); // Creates the macros for dea
 khash_t(clientStatuses) *clientStatuses; // The hash table
 
 void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int revents);
-void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents);
+void readCallback(struct ev_loop *loop, struct ev_io *watcher, int revents);
 void managerCallback(struct ev_loop *loop, struct ev_io *watcher, int revents);
 
 // Open the listening socket for incoming comet connections
@@ -199,46 +199,50 @@ void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int reve
 	}
 
 	// Accept client request
-	struct sockaddr_in client_addr;
-	socklen_t client_len = sizeof(client_addr);
-	int client_sd = accept(watcher->fd, (struct sockaddr *)&client_addr, &client_len);
+	struct sockaddr_in clientAddr;
+	socklen_t clientAddrLen = sizeof(clientAddr);
+	int clientSd = accept(watcher->fd, (struct sockaddr *)&clientAddr, &clientAddrLen);
 
-	if (client_sd < 0) {
+	if (clientSd < 0) {
 		puts("accept error");
 		return;
 	}
 
 	// Create a client status
-	// TODO rather than freeing/mallocing these, have a pool of them?
+	// TODO rather than freeing/mallocing these, have a pool of them using KMEMPOOL?
 	clientStatus *newStatus = calloc(1, sizeof(clientStatus));
-	newStatus->socket = client_sd;
+	// newStatus->socket = clientSd;
 
 	// Initialize and start watcher to read client requests
-	struct ev_io *watcherRead = calloc (1, sizeof(struct ev_io));
-	ev_io_init(watcherRead, read_cb, client_sd, EV_READ);
-	ev_io_start(loop, watcherRead);
-	watcherRead->data = newStatus; // Make the watcher point to the status for now TODO combine watcher and status
-	newStatus->watcher = watcherRead; // Make the status point to the watcher for now TODO combine watcher and status
+	ev_io_init(&newStatus->io, readCallback, clientSd, EV_READ);
+	ev_io_start(loop, &newStatus->io);
 }
 
-// Close a connection and free the memory associated
-void closeConnection(struct ev_io *watcher) {
+// Close a connection and free the memory associated and skip removing from hash, only for use when a connection
+// arrives and already was a message waiting for it
+void closeConnectionSkipHash(ev_io *watcher) {
+	ev_io_stop(libEvLoop, watcher); // Tell libev to stop following it
+	close(watcher->fd); // Close the socket
+	free(watcher); // Free the clientstatus/watcher (this is last because the fd is used above, after ev_io_stop)
+}
+
+// Close a connection and free the memory associated and remove from hash
+void closeConnection(ev_io *watcher) {
 	ev_io_stop(libEvLoop, watcher); // Tell libev to stop following it
 	close(watcher->fd); // Close the socket
 
 	// Remove the client status from the hash if it's a waiting connection
-	// TODO this strikes me as kinda slow to have to do a hash lookup to find it to free it. Maybe in the clientStatus
-	// we could store the hash iterator or something to make it easier to remove later? Or would that not work
-	// since the hash would have grown and changed since the start of that connection?
-	if (((clientStatus*)(watcher->data))->readStatus==1000) { // Only ones waiting a message (1000) are in the hash
-		khiter_t k = kh_get(clientStatuses, clientStatuses, ((clientStatus*)(watcher->data))->clientId); // Find it in the hash
+	// TODO have a 'in the hash' bool in the clientstatus so we don't bother removing ones from the hash that don't need it
+	// eg ones that connected and there was already a message waiting for them, or invalid connections. Or instead of the bool,
+	// have another variant of this function
+	if (((clientStatus*)watcher)->readStatus==1000) { // Only ones waiting a message (1000) are in the hash
+		khiter_t k = kh_get(clientStatuses, clientStatuses, ((clientStatus*)watcher)->clientId); // Find it in the hash
 		if (k != kh_end(clientStatuses)) { // Was it in the hash?
 			kh_del(clientStatuses, clientStatuses, k); // Remove it from the hash
 		}
 	}
 
-	free(watcher->data); // Free the clientStatus struct
-	free(watcher); // Free the watcher (this is last because the fd is used above, after ev_io_stop)
+	free(watcher); // Free the clientstatus/watcher (this is last because the fd is used above, after ev_io_stop)
 }
 
 // Called when the manager sends a complete message
@@ -249,10 +253,10 @@ void messageArrivedFromManager() {
 	khiter_t k = kh_get(clientStatuses, clientStatuses, (char*)commandClientId); // Find it in the hash
 	if (k != kh_end(clientStatuses)) { // Was it in the hash?
 		clientStatus* status = kh_value(clientStatuses, k); // Grab the clientStatus from the hash
-		int socket = status->socket; // Grab the socket from the clientStatus
+		//int socket = status->socket; // Grab the socket from the clientStatus
 		snprintf(httpResponse, HTTP_RESPONSE_SIZE, HTTP_TEMPLATE, commandMessageLen, commandMessage); // Compose the response message
-		write(socket, httpResponse, strlen(httpResponse)); // Send it
-		closeConnection(status->watcher); // Close the conn
+		write(status->io.fd, httpResponse, strlen(httpResponse)); // Send it
+		closeConnection((ev_io*)status); // Close the conn
 	}
 
 	// If not, add to a queue TODO
@@ -338,12 +342,13 @@ void managerCallback(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 
 // This is called when the headers are received so we can look for a message waiting for
 // this person, or leave them connected until one comes, or time them out after 50s maybe?
-void receivedHeaders(clientStatus *thisClient, struct ev_io *watcher) {
+void receivedHeaders(clientStatus *thisClient) {
 	printf ("Connected by >%s<\r\n", thisClient->clientId);
 
 	// TODO check to see if there's a message queued for this person
 	// if so, send it and drop the connection
 	// TODO when droping the connection, somehow tell closeConnection not to bother removing it from the hash
+	// closeConnectionSkipHash()
 
 	// If there's no message, then add their client id to the hash for later
 	int ret;
@@ -352,18 +357,17 @@ void receivedHeaders(clientStatus *thisClient, struct ev_io *watcher) {
 }
 
 /* Read client message */
-void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
-	byte buffer[BUFFER_SIZE];
-	size_t read;
-
+void readCallback(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	if (EV_ERROR & revents) {
 		puts ("got invalid event");
 		return;
 	}
 
-	struct clientStatus *thisClient = (clientStatus*)watcher->data;
+	struct clientStatus *thisClient = (clientStatus*)watcher;
 
 	// Receive message from client socket
+	byte buffer[BUFFER_SIZE];
+	size_t read;
 	read = recv(watcher->fd, buffer, BUFFER_SIZE, 0);
 	
 	if (read < 0) {
@@ -383,7 +387,7 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 		if (thisClient->readStatus == 500) { // looking for the second \n to signify the end of headers
 			if (buffer[i]=='\n') {
 				thisClient->readStatus = 1000; // Now we are ready to respond
-				receivedHeaders(thisClient, watcher); // Now we can respond
+				receivedHeaders(thisClient); // Now we can respond
 				return; // No point processing the rest of the stuff from the client: TODO what about skipping everything after the first line?
 			} else {
 				// TODO throw error and give up - '\r' not followed by '\n'	
