@@ -12,6 +12,7 @@
 
 #include <ev.h>
 #include "khash.h"
+#include "klist.h"
 
 #define COMET_BASE_PORT_NO 8000 // Which port range are we listening on for clients
 #define MAX_CLIENT_ID_LEN 128 // Length of the client id's
@@ -46,8 +47,7 @@ int commandStatus=0; // 0 = nothing, waiting
 // For creating the http response message
 char httpResponse[HTTP_RESPONSE_SIZE];
 
-// For the status of each connection, we have the below struct:
-// TODO we could extend the watcher struct and store the below stuff in it as per the libev docs, save a little ram?
+// For the status of each connection, we have the below struct, which extends the io watcher
 typedef struct clientStatus {
 	ev_io io; // The IO watcher. This is first so that when the callback is called, we can cast it to a clientStatus.
 	int readStatus; // 0=nothing, waiting for '/'
@@ -56,14 +56,22 @@ typedef struct clientStatus {
 		// First line: 100=found '\r', 200=found '\n' 
 		// Reading headers: 200, 300=found '\r', 400='\n', 500=2nd '\r', 1000=found 2nd '\n'
 		// Ready to respond: 1000
-	//int zzsocket; // The socket for this incoming client
 	int clientIdLen; // Length of the client id
 	char clientId[MAX_CLIENT_ID_LEN+1]; // Eg will be 'myClientId' for: GET /myClientId.js?c=cachekiller HTTP/1.1
+	// TODO make the clientid allocated on a memory pool and freed as soon as the login is complete
 } clientStatus;
 
 // The hash of client id's to client statuses
 KHASH_MAP_INIT_STR(clientStatuses, clientStatus*); // Creates the macros for dealing with this hash
 khash_t(clientStatuses) *clientStatuses; // The hash table
+
+// The queue of messages waiting to be collected
+// TODO every few minutes, iterate through this list to clear old ones out
+// This is a hash from client id to list
+#define __string_free(x) free(x->data) // The free-er for each list item
+KLIST_INIT(messages, char*, __string_free); // The message list for a single client type
+KHASH_MAP_INIT_STR(queue, klist_t(messages)*); // The queue hash table type
+khash_t(queue) *queue; // The queue hash table
 
 void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int revents);
 void readCallback(struct ev_loop *loop, struct ev_io *watcher, int revents);
@@ -165,6 +173,7 @@ void run() {
 // Initialise the hash tables that are needed
 void initHashes() {
 	clientStatuses = kh_init(clientStatuses); // Malloc the hash
+	queue = kh_init(queue);
 }
 
 // All the setup stuff goes here
@@ -180,6 +189,7 @@ void shutDown() {
 	close(cometSd);
 	close(managerSd);
 	kh_destroy(clientStatuses, clientStatuses); // Free it all
+	kh_destroy(queue, queue); // Todo: this probably wont destroy the lists in each queue hash value
 	// Todo clean up the libev stuff
 }
 
@@ -253,13 +263,30 @@ void messageArrivedFromManager() {
 	khiter_t k = kh_get(clientStatuses, clientStatuses, (char*)commandClientId); // Find it in the hash
 	if (k != kh_end(clientStatuses)) { // Was it in the hash?
 		clientStatus* status = kh_value(clientStatuses, k); // Grab the clientStatus from the hash
-		//int socket = status->socket; // Grab the socket from the clientStatus
 		snprintf(httpResponse, HTTP_RESPONSE_SIZE, HTTP_TEMPLATE, commandMessageLen, commandMessage); // Compose the response message
 		write(status->io.fd, httpResponse, strlen(httpResponse)); // Send it
 		closeConnection((ev_io*)status); // Close the conn
+		return;
 	}
 
-	// If not, add to a queue TODO
+	// If not, add to a queue
+	khiter_t q = kh_get(queue, queue, (char*)commandClientId); // See if this client is already in the queue
+	if (q == kh_end(queue)) {
+		printf("Creating queue for %s\r\n", commandClientId);
+		// This client needs to be added to the queue
+		// First make a new list
+		klist_t(messages) *newMessageList = kl_init(messages);
+		*kl_pushp(messages, newMessageList) = strdup((char*)commandMessage); // Add the message to the list
+		// Now make a new hash entry pointing to this new list
+		int ret;
+		q = kh_put(queue, queue, (char*)commandClientId, &ret);
+		kh_value(queue, q) = newMessageList;
+	} else {
+		printf("Adding to the queue for %s\r\n", commandClientId);
+		// This client is in the queue already eg it has a hash entry
+		// TODO check which order the queue entries come out if we use push and shift
+		*kl_pushp(messages, kh_value(queue, q)) = strdup((char*)commandMessage);
+	}
 }
 
 // This gets called when there's an incoming command from the manager
@@ -345,15 +372,29 @@ void managerCallback(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 void receivedHeaders(clientStatus *thisClient) {
 	printf ("Connected by >%s<\r\n", thisClient->clientId);
 
-	// TODO check to see if there's a message queued for this person
+	// Check to see if there's a message queued for this person
 	// if so, send it and drop the connection
-	// TODO when droping the connection, somehow tell closeConnection not to bother removing it from the hash
-	// closeConnectionSkipHash()
+	khiter_t q = kh_get(queue, queue, (char*)thisClient->clientId);
+	if (q != kh_end(queue)) {
+		char *queuedMessage;
+		kl_shift(messages, kh_value(queue,q), &queuedMessage);
+		// TODO do we have to free queuedmessage?
+		// Now send the message to the person and close
+		snprintf(httpResponse, HTTP_RESPONSE_SIZE, HTTP_TEMPLATE, (int)strlen(queuedMessage), queuedMessage); // Compose the response message
+		write(thisClient->io.fd, httpResponse, strlen(httpResponse)); // Send it
+		closeConnectionSkipHash((ev_io*)thisClient);
+		// If that was the last one, free the list and remove it from the hash
+		if (!kh_value(queue, q)->head->next) {
+			kl_destroy(messages, kh_value(queue, q)); // Free the list
+			kh_del(queue, queue, q); // Remove this client id from the hash
+		}
+	} else {
+		// If there's no message, then add their client id to the hash for later
+		int ret;
+		khiter_t k = kh_put(clientStatuses, clientStatuses, thisClient->clientId, &ret);
+		kh_value(clientStatuses, k) = thisClient;
+	}
 
-	// If there's no message, then add their client id to the hash for later
-	int ret;
-	khiter_t k = kh_put(clientStatuses, clientStatuses, thisClient->clientId, &ret);
-	kh_value(clientStatuses, k) = thisClient;
 }
 
 /* Read client message */
