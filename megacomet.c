@@ -68,8 +68,8 @@ khash_t(clientStatuses) *clientStatuses; // The hash table
 // The queue of messages waiting to be collected
 // TODO every few minutes, iterate through this list to clear old ones out
 // This is a hash from client id to list
-#define __string_free(x) free(x->data) // The free-er for each list item
-KLIST_INIT(messages, char*, __string_free); // The message list for a single client type
+#define __nop_free(x) // This is a no-op because i think klist is pointless for having it
+KLIST_INIT(messages, char*, __nop_free); // The message list for a single client type
 KHASH_MAP_INIT_STR(queue, klist_t(messages)*); // The queue hash table type
 khash_t(queue) *queue; // The queue hash table
 
@@ -279,13 +279,25 @@ void messageArrivedFromManager() {
 		*kl_pushp(messages, newMessageList) = strdup((char*)commandMessage); // Add the message to the list
 		// Now make a new hash entry pointing to this new list
 		int ret;
-		q = kh_put(queue, queue, (char*)commandClientId, &ret);
+		q = kh_put(queue, queue, strdup((char*)commandClientId), &ret);
 		kh_value(queue, q) = newMessageList;
 	} else {
 		printf("Adding to the queue for %s\r\n", commandClientId);
 		// This client is in the queue already eg it has a hash entry
 		// TODO check which order the queue entries come out if we use push and shift
 		*kl_pushp(messages, kh_value(queue, q)) = strdup((char*)commandMessage);
+	}
+
+	// Now do a printout of the hash list
+	for (khiter_t qi = kh_begin(queue); qi < kh_end(queue); qi++) {
+		if (kh_exist(queue, qi)) {
+			printf("Queue for %s\n", kh_key(queue,qi));
+			klist_t(messages) *list = kh_value(queue, qi);
+			kliter_t(messages) *li;
+			for (li = kl_begin(list); li != kl_end(list); li = kl_next(li))
+				printf("%s\n", kl_val(li));
+			printf("----\n");
+		}
 	}
 }
 
@@ -378,14 +390,15 @@ void receivedHeaders(clientStatus *thisClient) {
 	if (q != kh_end(queue)) {
 		char *queuedMessage;
 		kl_shift(messages, kh_value(queue,q), &queuedMessage);
-		// TODO do we have to free queuedmessage?
 		// Now send the message to the person and close
 		snprintf(httpResponse, HTTP_RESPONSE_SIZE, HTTP_TEMPLATE, (int)strlen(queuedMessage), queuedMessage); // Compose the response message
+		free(queuedMessage);
 		write(thisClient->io.fd, httpResponse, strlen(httpResponse)); // Send it
 		closeConnectionSkipHash((ev_io*)thisClient);
 		// If that was the last one, free the list and remove it from the hash
 		if (!kh_value(queue, q)->head->next) {
 			kl_destroy(messages, kh_value(queue, q)); // Free the list
+			free((void*)kh_key(queue, q)); // Free the key (the client id)
 			kh_del(queue, queue, q); // Remove this client id from the hash
 		}
 	} else {

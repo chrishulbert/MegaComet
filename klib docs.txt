@@ -1,0 +1,113 @@
+klib docs
+
+KMEMPOOL ------------------------------------------------------------------------------------------
+KMEMPOOL_INIT name, kmptype_t, kmpfree_f
+	typedef struct { 
+		size_t cnt, Number of items in use (eg number alloced - number freed/pooled) not used for anything
+			n, Number of items in the memory pool
+			max; Size of the buf array currently
+		kmptype_t **buf;
+	} kmp_##name##_t;	
+name is the list type name
+kmptype_t is the type of what youre storing, eg MyStruct, NOT the pointer form MyStruct*
+kmpfree_f is the macro to specially free any children of your MyStruct, it gets passed a MyStruct*
+Note that your MyStruct* gets freed by the kmempool, if it doesn't contain any pointers then you wont need a kmpfree_f
+Buf is like an array of pointers to MyStructs, eg MyStruct* listOfObjects[...]
+
+#define kmempool_t(name) kmp_##name##_t
+Shortcut for the kmp_name_t struct typedef
+
+#define kmp_init(name) kmp_init_##name()
+allocates memory and zeroes it out for a mempool and returns the pointer
+
+#define kmp_destroy(name, mp) kmp_destroy_##name(mp)
+For each item, calls your custom free-er on it, passing the MyStruct*, as well as a normal free
+Frees the buf
+Frees the structure
+
+#define kmp_alloc(name, mp) kmp_alloc_##name(mp)
+Increments cnt (number of items allocated)
+If the pool is empty, simply callocs an item and returns it using calloc(1, sizeof(kmptype_t));
+Otherwise pulls the top one off the pool with mp->buf[--mp->n];
+
+#define kmp_free(name, mp, p)
+-- cnt (number of items allocated)
+Adds p to the memory pool. P should be a pointer to your object, eg MyStruct*
+Doubles max and reallocs the buf if necessary
+Does mp->buf[mp->n++] = p;
+
+Eg usage:
+typedef struct {
+  int a, b, c;
+} MyStruct;
+#define MyStructFreer(x) // Nothing to free because MyStruct doesn't contain any pointers
+KMEMPOOL_INIT (msp, MyStruct, MyStructFreer); // Sets up the macros
+kmempool_t(msp) *myMemPool; // Declares a pointer to a mempool
+myMemPool = kmp_init(msp); // Allocs the mempool
+MyStruct *a, *b, *c; // Lets alloc some mystruct's
+a = kmp_alloc(msp, myMemPool);
+b = kmp_alloc(msp, myMemPool);
+kmp_free(msp, myMemPool, a);
+c = kmp_alloc(msp, myMemPool);
+kmp_destroy(msp, myMemPool);
+
+KLIST ------------------------------------------------------------------------------------------
+KLIST_INIT(name, kltype_t, kmpfree_t)
+	name = some name to use when referring to lists of this type
+	kltype_t = the type to store in the list, either eg 'int' or 'MyStruct*' the pointer form
+	kmpfree_t = the custom freeing function. Only used when destroying. Will get passed a kliter*. This should
+		probably free the 'data' object, because it's probably a MyStruct*
+		However, if you're freeing your objects as you 'pop' them from the list, then you don't want this,
+		because this will get called on the objects in the mem pool at destruct time, after you've already freed them
+	creates a mempool for the iterator structs: KMEMPOOL_INIT(name, kl1_##name, kmpfree_t) 
+kliter_t(name) = // The struct for a single item in the list
+struct __kl1_##name {
+		kltype_t data; // The data at this point in the list
+		struct __kl1_##name *next; // The next point
+	};
+
+klist_t(name) = // The actual list structure
+typedef struct {
+		kl1_##name *head, *tail; // First and last in the list
+		kmp_##name##_t *mp; // The mempool
+		size_t size; // Number of items in the list for your reference
+	} kl_##name##_t;
+kl_init(name) 
+	creates and returns a new klist_t(name)
+	creates the mempool in mp
+	creates a new iterator (using the mempool), sets both head and tail to it
+	sets the head/tail iterator's next to zero
+kl_destroy(name, kl) 
+	frees all the items in the list
+	destroys the mempool, WHICH CALLS THE FREE-ER on all iterator struct pointers, which should probably
+		free the MyStruct*
+		However, it'll also call the freer on all the pooled iterator structs, which were probably already freed when you pop'd them
+		Its probably worth popping everything and freeing them all before calling this, and making its freer do nothing fancy.
+	frees the list
+kl_pushp(name, kl) 
+	Adds a new item. Returns the previous tail value, which you can use to set the value.
+	Makes a new list node:
+		Next is 0
+		Makes it the new 'tail'
+	Makes the old tail point to the new node as it's 'next'	
+	returns a pointer to the last tails data (kltype_t*)
+kl_shift(name, kl, d)
+	Gets the first item (head) from the list
+	Stores it in 'd'
+	Returns 0 if ok, or -1 if the list is empty
+
+Example usage:
+typedef struct {
+  int a, b, c;
+} MyStruct;
+#define MyStructFreer(x) free(x->data)
+KLIST_INIT(lms, MyStruct*, MyStructFreer);
+klist_t(lms)* myList = kl_init(lms);
+MyStruct *a, *b, *c;
+a = calloc(1, sizeof(MyStruct));
+b = calloc(1, sizeof(MyStruct));
+*kl_pushp(lms, myList) = a;
+*kl_pushp(lms, myList) = b;
+kl_shift(lms, myList, &c);
+kl_destroy(lms, myList);
+

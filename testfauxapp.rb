@@ -1,5 +1,6 @@
 require 'socket'
-clients = %w'Jim Bob Sam John Will Sue Mary Joe'
+#clients = %w'Jim Bob Sam John Will Sue Mary Joe'
+clients = ['Sue']
 messages = %w'Hi Bye Hello Gday Goodbye Blah Yada'
 
 manager = TCPSocket.open('localhost',9000)
