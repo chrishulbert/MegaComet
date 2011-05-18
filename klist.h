@@ -53,9 +53,9 @@
 		if (mp->n == mp->max) {											\
 			if (mp->max > 10000) {                                      \
 				mp->max += 10000;                                       \
-            } else {                                                    \ 
+            } else {                                                    \
 			    mp->max = mp->max? mp->max<<1 : 16;						\
-			}															\		
+			}															\
 			mp->buf = realloc(mp->buf, sizeof(void*) * mp->max);		\
 		}																\
 		mp->buf[mp->n++] = p;											\

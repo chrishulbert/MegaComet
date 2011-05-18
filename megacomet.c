@@ -48,8 +48,12 @@ typedef struct clientStatus {
 		// Ready to respond: 1000
 	int clientIdLen; // Length of the client id
 	char clientId[MAX_CLIENT_ID_LEN+1]; // Eg will be 'myClientId' for: GET /myClientId.js?c=cachekiller HTTP/1.1
-	// TODO make the clientid allocated on a memory pool and freed as soon as the login is complete
 } clientStatus;
+
+// The memory pool of client statuses
+#define __nop_free(x)
+KMEMPOOL_INIT(csPool, clientStatus, __nop_free); // Set up the macros for the client status memory pool
+kmempool_t(csPool) *csPool; // The memory pool
 
 // The hash of client id's to client statuses
 KHASH_MAP_INIT_STR(clientStatuses, clientStatus*); // Creates the macros for dealing with this hash
@@ -58,7 +62,6 @@ khash_t(clientStatuses) *clientStatuses; // The hash table
 // The queue of messages waiting to be collected
 // TODO every few minutes, iterate through this list to clear old ones out
 // This is a hash from client id to list
-#define __nop_free(x) // This is a no-op because i think klist is pointless for having it
 KLIST_INIT(messages, char*, __nop_free); // The message list for a single client type
 KHASH_MAP_INIT_STR(queue, klist_t(messages)*); // The queue hash table type
 khash_t(queue) *queue; // The queue hash table
@@ -160,6 +163,7 @@ void run() {
 
 // Initialise the hash tables that are needed
 void initHashes() {
+	csPool = kmp_init(csPool);
 	clientStatuses = kh_init(clientStatuses); // Malloc the hash
 	queue = kh_init(queue);
 }
@@ -175,6 +179,7 @@ void setup() {
 void shutDown() {
 	close(cometSd);
 	close(managerSd);
+	kmp_destroy(csPool, csPool); // Free the pooled client statuses
 	kh_destroy(clientStatuses, clientStatuses); // Free it all
 	kh_destroy(queue, queue); // Todo: this probably wont destroy the lists in each queue hash value
 	// Todo clean up the libev stuff
@@ -213,9 +218,9 @@ void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int reve
 		return;
 	}
 
-	// Create a client status
-	// TODO rather than freeing/mallocing these, have a pool of them using KMEMPOOL?
-	clientStatus *newStatus = calloc(1, sizeof(clientStatus));
+	// Create a client status by getting it from the memory pool
+	clientStatus *newStatus = kmp_alloc(csPool, csPool);
+	bzero(newStatus, sizeof(clientStatus));
 
 	// Initialize and start watcher to read client requests
 	ev_io_init(&newStatus->io, readCallback, clientSd, EV_READ);
@@ -227,7 +232,7 @@ void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int reve
 void closeConnectionSkipHash(ev_io *watcher) {
 	ev_io_stop(libEvLoop, watcher); // Tell libev to stop following it
 	close(watcher->fd); // Close the socket
-	free(watcher); // Free the clientstatus/watcher (this is last because the fd is used above, after ev_io_stop)
+	kmp_free(csPool, csPool, (clientStatus*)watcher); // Free the clientstatus/watcher (this is last because the fd is used above, after ev_io_stop)
 }
 
 // Close a connection and free the memory associated and remove from hash
@@ -243,7 +248,7 @@ void closeConnection(ev_io *watcher) {
 		}
 	}
 
-	free(watcher); // Free the clientstatus/watcher (this is last because the fd is used above, after ev_io_stop)
+	kmp_free(csPool, csPool, (clientStatus*)watcher); // Free the clientstatus/watcher (this is last because the fd is used above, after ev_io_stop)
 }
 
 // Called when the manager sends a complete message
