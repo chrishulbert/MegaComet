@@ -98,7 +98,14 @@ void run() {
 }
 
 // Everyone's favourite function!
-int main() {
+int main(int argc, char **args) {
+	// Suss out the command line
+	if (argc<2) {
+		puts("MegaComet Manager");
+		puts("This should be started by the MegaStart, not called directly");
+		return 1;
+	}
+
 	setup();
 	run();
 	return 0;
