@@ -12,19 +12,12 @@
 
 #include "khash.h"
 #include <ev.h>
-
-#define MANAGER_PORT_NO 9000 // The port we are to listen for the workers
-#define LISTEN_BACKLOG 1024 // The number of pending connections that can be queued up at any one time 
-#define WORKERS 8 // The number of workers
-#define MAX_CONNS 16 // We need to cater for N connections. Usually 8 workers + 1 (or more) app connections
-#define MAX_CLIENT_ID_LEN 128 // Length of the client id's
-#define MAX_MESSAGE_LEN 1024 // Length of the message
-#define BUFFER_SIZE 2048 // Size of the chunks we read incoming commands in. Should be big enough for a full command
+#include "config.h"
 
 // Useful utilities
 typedef unsigned char byte;
 
-// Globals (yuck!)
+// Globals (i know, globals are yuck, but we're going for speed not beauty in this code...)
 int managerSd; // The listening socket file descriptors
 struct ev_loop *libEvLoop; // The main libev loop. Global so that we don't have to pass it around everywhere
 typedef struct connection {
@@ -36,7 +29,7 @@ typedef struct connection {
 	byte appMessage[MAX_MESSAGE_LEN+1]; // The message for an incoming message from the app (+1 for null term)
 	int appMessageLen;
 } connection;
-connection conn[MAX_CONNS]; // Just using an array not a hash because its quicker for small lists
+connection conn[MAX_MANAGER_CONNS]; // Just using an array not a hash because its quicker for small lists
 int conns = 0;
 byte forwardingBuf[MAX_CLIENT_ID_LEN+MAX_MESSAGE_LEN+3]; // For the message forwarding to use
 
@@ -129,7 +122,7 @@ void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int reve
 	}
 
 	// Set it up in the connections list
-	if (conns >= MAX_CONNS) {
+	if (conns >= MAX_MANAGER_CONNS) {
 		// Too many
 		puts("Too many connections");
 		close(client_sd);
