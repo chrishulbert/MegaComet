@@ -140,15 +140,13 @@ void openManagerSocket(void) {
 		exit(1);
 	}
 
-	puts("Manager connected");
-
 	// Now tell the manager which worker i am
 	byte msg[2];
 	msg[0]=1;
 	msg[1]=workerNo;
 	write(managerSd, msg, 2);
 
-	puts("Manager notified");
+	puts("Manager connected");
 }
 
 // The main libev loop
@@ -178,7 +176,6 @@ void initHashes() {
 
 // All the setup stuff goes here
 void setup() {
-	workerNo = 3; // TODO get this from the args
 	initHashes();
 	openCometSocket();
 	openManagerSocket();
@@ -194,14 +191,22 @@ void shutDown() {
 }
 
 // Everyone's favourite function!
-int main() {
+int main(int argc, char **args) {
+	// Suss out the command line
+	if (argc<2) {
+		puts("MegaComet worker");
+		puts("This should be started by the MegaStart, not called directly");
+		return 1;
+	}
+	workerNo = atoi(args[1]);
+	
 	setup();
 	run();
 	shutDown();
 	return 0;
 }
 
-/* Accept client requests */
+// Accept client requests
 void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	if (EV_ERROR & revents) {
 		puts("got invalid event");
@@ -221,7 +226,6 @@ void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int reve
 	// Create a client status
 	// TODO rather than freeing/mallocing these, have a pool of them using KMEMPOOL?
 	clientStatus *newStatus = calloc(1, sizeof(clientStatus));
-	// newStatus->socket = clientSd;
 
 	// Initialize and start watcher to read client requests
 	ev_io_init(&newStatus->io, readCallback, clientSd, EV_READ);
@@ -242,9 +246,6 @@ void closeConnection(ev_io *watcher) {
 	close(watcher->fd); // Close the socket
 
 	// Remove the client status from the hash if it's a waiting connection
-	// TODO have a 'in the hash' bool in the clientstatus so we don't bother removing ones from the hash that don't need it
-	// eg ones that connected and there was already a message waiting for them, or invalid connections. Or instead of the bool,
-	// have another variant of this function
 	if (((clientStatus*)watcher)->readStatus==1000) { // Only ones waiting a message (1000) are in the hash
 		khiter_t k = kh_get(clientStatuses, clientStatuses, ((clientStatus*)watcher)->clientId); // Find it in the hash
 		if (k != kh_end(clientStatuses)) { // Was it in the hash?
@@ -284,7 +285,7 @@ void messageArrivedFromManager() {
 	} else {
 		printf("Adding to the queue for %s\r\n", commandClientId);
 		// This client is in the queue already eg it has a hash entry
-		// TODO check which order the queue entries come out if we use push and shift
+		// Pushp puts this message at the end of the queue, so that shift will grab the oldest first (like a FIFO)
 		*kl_pushp(messages, kh_value(queue, q)) = strdup((char*)commandMessage);
 	}
 
