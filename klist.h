@@ -51,8 +51,8 @@
 	static inline void kmp_free_##name(kmp_##name##_t *mp, kmptype_t *p) { \
 		--mp->cnt;														\
 		if (mp->n == mp->max) {											\
-			if (mp->max > 10000) {                                      \
-				mp->max += 10000;                                       \
+			if (mp->max > 1000) {										\
+				mp->max += 1000;										\
             } else {                                                    \
 			    mp->max = mp->max? mp->max<<1 : 16;						\
 			}															\
