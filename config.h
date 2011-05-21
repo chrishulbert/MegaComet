@@ -12,10 +12,12 @@
 #define BUFFER_SIZE 2048 // Size of the chunks we read incoming commands in. Should be big enough for a full command
 
 #define COMET_BASE_PORT_NO 8000 // Which port range are we listening on for clients
-//#define FIRST_LINE_SIZE 60 // The length of the first line allowed (the GET line) - each byte here equals a meg when multiplied by 1m!
 #define HTTP_TEMPLATE "HTTP/1.1 200 OK\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s" // The http response
 #define HTTP_OVERHEAD 80 // The size of the above line, plus a few bytes
 #define HTTP_RESPONSE_SIZE (MAX_MESSAGE_LEN + HTTP_OVERHEAD) // Size of the http response buffer
+
+#define DAEMON_LOOP_SECONDS 10 // How many seconds between attempts to check and restart dead processes
+#define MANAGER_START_DELAY 5 // How many seconds after the manager starts to try starting the workers
 
 #endif
 
