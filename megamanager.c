@@ -58,7 +58,8 @@ void openManagerSocket(void) {
 	bzero(&addr, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(MANAGER_PORT_NO);
-	addr.sin_addr.s_addr = INADDR_ANY;
+	//inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr.s_addr); // Only listen locally. Use this when your app is running on the same server.
+	addr.sin_addr.s_addr = INADDR_ANY; // Listen for anyone. Use this when your app is on a diff server.
 	int bindResult = bind(managerSd, (struct sockaddr*) &addr, sizeof(addr));
 	if (bindResult < 0) {
 		perror("bind error");
