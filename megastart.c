@@ -77,8 +77,13 @@ void daemonLoop() {
 	}
 }
 
-int main() {
+int main(int argc, char **args) {
 	puts("MegaComet Starter");
+	// Suss out the command line
+	if (argc<2) {
+		puts("This should be started by the start script, not called directly");
+		return 1;
+	}
 
 	// Now daemonise
 	daemonise();

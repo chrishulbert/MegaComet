@@ -1,0 +1,6 @@
+#!/bin/bash
+echo Killing the starter if its already running
+killall megastart
+echo Now starting the starter process
+./megastart start
+
