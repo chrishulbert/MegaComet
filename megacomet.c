@@ -91,7 +91,7 @@ void openCometSocket(void) {
 	struct sockaddr_in addr;
 	bzero(&addr, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(COMET_BASE_PORT_NO);
+	addr.sin_port = htons(COMET_BASE_PORT_NO+workerNo);
 	addr.sin_addr.s_addr = INADDR_ANY;
 	int bindResult = bind(cometSd, (struct sockaddr*) &addr, sizeof(addr));
 	if (bindResult < 0) {
@@ -321,6 +321,7 @@ void managerCallback(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 		// TODO reconnect to the manager?
 		// Or should i exit, and let a monitoring script look after re-launching?
 		// I'm thinking i should exit because the manager has probably died
+		exit(1);
 		return;
 	}
 	// Go through the bytes read and parse what the client is sending us
