@@ -1,0 +1,246 @@
+Processes: 70 total, 2 running, 68 sleeping, 289 threads 
+2011/05/22 19:44:55
+Load Avg: 0.13, 0.41, 0.43 
+CPU usage: 15.38% user, 38.46% sys, 46.15% idle 
+SharedLibs: 4560K resident, 6764K data, 0B linkedit.
+MemRegions: 10180 total, 380M resident, 13M private, 223M shared.
+PhysMem: 253M wired, 693M active, 746M inactive, 1692M used, 355M free.
+VM: 159G vsize, 1040M framework vsize, 5467152(0) pageins, 52748(0) pageouts.
+Networks: packets: 904623/414M in, 783689/58M out.
+Disks: 643837/11G read, 625524/9384M written.
+
+COMMAND          RSIZE  RPRVT  RSHRD  FAULTS    %CPU
+top              1152K+ 616K+  336K+  1064+     0.0 
+sh               764K+  256K+  620K+  308+      0.0 
+ruby             3168K+ 1724K+ 2256K+ 912+      0.0 
+taskgated        1008K+ 440K+  348K+  378+      0.0 
+mdworker         21M+   6340K+ 18M+   10991+    0.0 
+Sublime Text 2   41M+   27M+   87M+   17082+    0.0 
+Google Chrome He 8020K+ 3092K+ 50M+   2696+     0.0 
+Google Chrome He 19M+   7516K+ 53M+   5782+     0.0 
+Google Chrome He 32M+   16M+   55M+   54692+    0.0 
+Google Chrome    71M+   46M+   82M+   409054+   0.0 
+megacomet        392K+  116K+  300K+  264+      0.0 
+megacomet        392K+  116K+  300K+  264+      0.0 
+megacomet        392K+  116K+  300K+  264+      0.0 
+megacomet        392K+  116K+  300K+  264+      0.0 
+megacomet        392K+  116K+  300K+  264+      0.0 
+megacomet        392K+  116K+  300K+  264+      0.0 
+megacomet        392K+  116K+  300K+  264+      0.0 
+megacomet        392K+  116K+  300K+  264+      0.0 
+megamanager      404K+  132K+  288K+  267+      0.0 
+megastart        172K+  108K+  244K+  130+      0.0 
+Cog              6796K+ 3212K+ 29M+   12825+    0.0 
+vim              1192K+ 68K+   1392K+ 899+      0.0 
+sh               436K+  44K+   628K+  379+      0.0 
+bash             540K+  44K+   776K+  494+      0.0 
+login            816K+  104K+  324K+  619+      0.0 
+bash             848K+  284K+  768K+  12260+    0.0 
+login            816K+  104K+  324K+  619+      0.0 
+ssh-agent        1180K+ 336K+  440K+  7810+     0.0 
+bash             788K+  280K+  768K+  2260+     0.0 
+login            816K+  104K+  324K+  617+      0.0 
+Terminal         19M+   9336K+ 33M+   449771+   0.0 
+AppleSpell       6920K+ 2472K+ 14M+   15783+    0.0 
+DashboardClient  8372K+ 11M+   15M+   43465+    0.0 
+DashboardClient  17M+   12M+   17M+   19798+    0.0 
+iTunesHelper     2248K+ 708K+  13M+   11079+    0.0 
+AirPort Base Sta 4212K+ 796K+  16M+   11186+    0.0 
+UserEventAgent   4772K+ 1460K+ 2560K+ 22937+    0.0 
+fontd            4976K+ 4088K+ 10M+   195169+   0.0 
+pboard           384K+  132K+  252K+  465+      0.0 
+Finder           44M+   19M+   64M+   2431005+  0.0 
+SystemUIServer   36M+   29M+   48M+   337181+   0.0 
+Dock             31M+   11M+   50M+   1207663+  0.0 
+launchd          852K+  588K+  464K+  77144+    0.0 
+coreaudiod       6056K+ 5244K+ 1336K+ 25035+    0.0 
+cvmsServ         804K+  496K+  416K+  3820+     0.0 
+WindowServer     42M+   8792K+ 41M+   17993853+ 0.0 
+autofsd          532K+  228K+  252K+  9895+     0.0 
+dynamic_pager    332K+  84K+   244K+  315+      0.0 
+fseventsd        1944K+ 2060K+ 308K+  127835+   0.0 
+hidd             448K+  168K+  248K+  9250+     0.0 
+KernelEventAgent 556K+  276K+  268K+  10129+    0.0 
+loginwindow      7004K+ 2476K+ 14M+   82583+    0.0 
+mds              90M+   115M+  15M+   1026987+  0.0 
+SystemStarter    436K+  64K+   248K+  9374+     0.0 
+usbmuxd          832K+  720K+  1908K+ 10151+    0.0 
+krb5kdc          1072K+ 344K+  368K+  10086+    0.0 
+ntpd             772K+  276K+  556K+  93325+    0.0 
+securityd        2860K+ 2160K+ 10M+   9350+     0.0 
+coreservicesd    7272K+ 3944K+ 14M+   777686+   0.0 
+mDNSResponder    2008K+ 1092K+ 784K+  26723+    0.0 
+distnoted        1116K+ 728K+  244K+  17332+    0.0 
+blued            4104K+ 1080K+ 9680K+ 20347+    0.0 
+syslogd          660K+  408K+  320K+  10838+    0.0 
+configd          2608K+ 1288K+ 10M+   493886+   0.0 
+diskarbitrationd 1232K+ 660K+  360K+  27202+    0.0 
+notifyd          460K+  232K+  284K+  420295+   0.0 
+DirectoryService 4188K+ 1720K+ 1392K+ 892920+   0.0 
+kextd            2588K+ 3500K+ 348K+  65125+    0.0 
+launchd          768K+  476K+  436K+  81186+    0.0 
+kernel_task      100M+  11M+   0B     299137+   0.0 
+Processes: 70 total, 2 running, 68 sleeping, 286 threads 
+2011/05/22 19:44:56
+Load Avg: 0.13, 0.41, 0.43 
+CPU usage: 3.21% user, 7.33% sys, 89.44% idle 
+SharedLibs: 4560K resident, 6764K data, 0B linkedit.
+MemRegions: 10175 total, 381M resident, 13M private, 218M shared.
+PhysMem: 253M wired, 693M active, 746M inactive, 1692M used, 355M free.
+VM: 159G vsize, 1040M framework vsize, 5467152(0) pageins, 52748(0) pageouts.
+Networks: packets: 904623/414M in, 783689/58M out.
+Disks: 643837/11G read, 625526/9384M written.
+
+COMMAND          RSIZE  RPRVT  RSHRD  FAULTS    %CPU
+top              1196K+ 628K+  264K-  1712+     7.8 
+sh               764K   256K   620K   308       0.0 
+ruby             3168K  1724K  240K-  912       0.3 
+taskgated        1008K  440K   244K-  378       0.0 
+mdworker         21M    6124K- 11M-   10994+    0.0 
+Sublime Text 2   41M    27M    40M-   17090+    0.1 
+Google Chrome He 8020K  3092K  50M    2696      0.0 
+Google Chrome He 19M    7396K- 53M+   5782      0.0 
+Google Chrome He 32M    16M-   55M+   54692     0.0 
+Google Chrome    71M    46M    76M-   409054    0.0 
+megacomet        392K   116K   300K   264       0.0 
+megacomet        392K   116K   300K   264       0.0 
+megacomet        392K   116K   300K   264       0.0 
+megacomet        392K   116K   300K   264       0.0 
+megacomet        392K   116K   300K   264       0.0 
+megacomet        392K   116K   300K   264       0.0 
+megacomet        392K   116K   300K   264       0.0 
+megacomet        392K   116K   300K   264       0.0 
+megamanager      404K   132K   280K-  267       0.0 
+megastart        172K   108K   240K-  130       0.0 
+Cog              6796K  3212K  28M-   12825     0.0 
+vim              1192K  68K    244K-  899       0.0 
+sh               436K   44K    620K-  379       0.0 
+bash             540K   44K    768K-  494       0.0 
+login            816K   104K   312K-  619       0.0 
+bash             848K   284K   768K   12260     0.0 
+login            816K   104K   312K-  619       0.0 
+ssh-agent        1180K  336K   300K-  7810      0.0 
+bash             788K   280K   768K   2260      0.0 
+login            816K   104K   312K-  617       0.0 
+Terminal         19M    9336K  30M-   449771    0.0 
+AppleSpell       6920K  2472K  13M-   15783     0.0 
+DashboardClient  8372K  11M+   15M-   43465     0.0 
+DashboardClient  17M    11M-   17M-   19798     3.0 
+iTunesHelper     2248K  708K   13M-   11079     0.0 
+AirPort Base Sta 4212K  796K   16M-   11186     0.0 
+UserEventAgent   4772K  1124K- 2528K- 22937     0.0 
+fontd            4976K  4088K  10M-   195169    0.0 
+pboard           384K   132K   244K-  465       0.0 
+Finder           44M    23M+   51M-   2431005   1.0 
+SystemUIServer   36M    29M-   45M-   337181    0.0 
+Dock             31M    11M-   49M-   1207663   0.0 
+launchd          852K   588K   464K   77147+    0.0 
+coreaudiod       6056K  5244K  1200K- 25035     3.1 
+cvmsServ         804K   496K   380K-  3820      0.0 
+WindowServer     42M    12M+   33M-   17993853  0.1 
+autofsd          532K   228K   244K-  9895      0.0 
+dynamic_pager    332K   76K-   244K   315       0.0 
+fseventsd        1944K  2060K  244K-  127837+   0.0 
+hidd             448K   160K-  248K   9250      0.0 
+KernelEventAgent 556K   276K   244K-  10129     0.0 
+loginwindow      7004K  2476K  14M-   82583     0.0 
+mds              90M-   115M-  13M-   1026995+  0.2 
+SystemStarter    436K   56K-   248K   9374      0.0 
+usbmuxd          832K   720K   1832K- 10151     0.0 
+krb5kdc          1072K  344K   264K-  10086     0.0 
+ntpd             772K   276K   248K-  93325     0.0 
+securityd        2860K  2160K  9396K- 9350      0.0 
+coreservicesd    7272K  3964K+ 14M-   777686    0.0 
+mDNSResponder    2008K  1092K  312K-  26723     0.0 
+distnoted        1104K- 716K-  240K-  17332     0.0 
+blued            4104K  248K-  9776K+ 20347     0.0 
+syslogd          660K   408K   244K-  10838     0.0 
+configd          2608K  648K-  9680K- 493886    0.0 
+diskarbitrationd 1232K  660K   244K-  27202     0.0 
+notifyd          460K   232K   244K-  420297+   0.0 
+DirectoryService 4176K- 636K-  780K-  892920    0.0 
+kextd            2588K  2972K- 508K+  65125     0.0 
+launchd          768K   476K   436K   81186     0.0 
+kernel_task      100M+  11M    0B     299137    0.7 
+Processes: 70 total, 2 running, 68 sleeping, 288 threads 
+2011/05/22 19:44:57
+Load Avg: 0.13, 0.41, 0.43 
+CPU usage: 2.27% user, 5.0% sys, 92.72% idle 
+SharedLibs: 4560K resident, 6764K data, 0B linkedit.
+MemRegions: 10179 total, 366M resident, 13M private, 226M shared.
+PhysMem: 253M wired, 693M active, 746M inactive, 1692M used, 355M free.
+VM: 159G vsize, 1040M framework vsize, 5467152(0) pageins, 52748(0) pageouts.
+Networks: packets: 904623/414M in, 783689/58M out.
+Disks: 643837/11G read, 625547/9385M written.
+
+COMMAND          RSIZE  RPRVT  RSHRD  FAULTS    %CPU
+top              1196K  628K   264K   2349+     5.8 
+sh               764K   256K   620K   308       0.0 
+ruby             3168K  1724K  240K   912       0.3 
+taskgated        1008K  440K   244K   378       0.0 
+mdworker         21M+   6244K+ 11M-   10997+    0.0 
+Sublime Text 2   41M    24M-   40M    17090     0.1 
+Google Chrome He 8020K  3092K  50M    2696      0.0 
+Google Chrome He 19M    7456K+ 53M-   5782      0.0 
+Google Chrome He 32M    16M+   55M-   54692     0.0 
+Google Chrome    71M    46M    76M    409054    0.0 
+megacomet        392K   116K   300K   264       0.0 
+megacomet        392K   116K   300K   264       0.0 
+megacomet        392K   116K   300K   264       0.0 
+megacomet        392K   116K   300K   264       0.0 
+megacomet        392K   116K   300K   264       0.0 
+megacomet        392K   116K   300K   264       0.0 
+megacomet        392K   116K   300K   264       0.0 
+megacomet        392K   116K   300K   264       0.0 
+megamanager      404K   132K   280K   267       0.0 
+megastart        172K   108K   240K   130       0.0 
+Cog              6796K  3212K  28M    12825     0.0 
+vim              1192K  68K    244K   899       0.0 
+sh               436K   44K    620K   379       0.0 
+bash             540K   44K    768K   494       0.0 
+login            816K   104K   312K   619       0.0 
+bash             848K   284K   768K   12260     0.0 
+login            816K   104K   312K   619       0.0 
+ssh-agent        1180K  336K   300K   7810      0.0 
+bash             788K   280K   768K   2260      0.0 
+login            816K   104K   312K   617       0.0 
+Terminal         19M    9336K  30M    449771    0.0 
+AppleSpell       6920K  2472K  13M    15783     0.0 
+DashboardClient  8372K  11M-   15M+   43465     0.0 
+DashboardClient  17M    12M+   17M-   19798     3.1 
+iTunesHelper     2248K  708K   13M    11079     0.0 
+AirPort Base Sta 4212K  796K   16M    11186     0.0 
+UserEventAgent   4772K  1292K+ 2360K- 22937     0.0 
+fontd            4976K  4088K  10M    195169    0.0 
+pboard           384K   132K   244K   465       0.0 
+Finder           44M    15M-   59M+   2431005   0.0 
+SystemUIServer   36M    29M+   45M-   337181    0.0 
+Dock             31M    11M+   49M-   1207663   0.0 
+launchd          852K   588K   464K   77147     0.0 
+coreaudiod       6056K  5252K+ 1192K- 25035     3.1 
+cvmsServ         804K   496K   380K   3820      0.0 
+WindowServer     42M    5176K- 40M+   17993853  0.1 
+autofsd          532K   228K   244K   9895      0.0 
+dynamic_pager    332K   80K+   240K-  315       0.0 
+fseventsd        1956K+ 2072K+ 244K   127840+   0.0 
+hidd             448K   164K+  244K-  9250      0.0 
+KernelEventAgent 556K   276K   244K   10129     0.0 
+loginwindow      7004K  2484K+ 14M-   82583     0.0 
+mds              90M    115M   13M    1026995   0.0 
+SystemStarter    436K   60K+   244K-  9374      0.0 
+usbmuxd          832K   720K   1832K  10151     0.0 
+krb5kdc          1072K  344K   264K   10086     0.0 
+ntpd             772K   276K   248K   93325     0.0 
+securityd        2860K  2160K  9396K  9350      0.0 
+coreservicesd    7272K  3924K- 14M+   777686    0.0 
+mDNSResponder    2008K  1092K  312K   26723     0.0 
+distnoted        1104K  716K   240K   17332     0.0 
+blued            4104K  664K+  9360K- 20347     0.0 
+syslogd          660K   408K   244K   10838     0.0 
+configd          2608K  968K+  9360K- 493886    0.0 
+diskarbitrationd 1232K  660K   244K   27202     0.0 
+notifyd          460K   232K   244K   420297    0.0 
+DirectoryService 4176K  1172K+ 244K-  892920    0.0 
+kextd            2588K  3236K+ 244K-  65125     0.0 
+launchd          768K   476K   436K   81188+    3.1 
+kernel_task      100M   11M    0B     299137    0.6 
