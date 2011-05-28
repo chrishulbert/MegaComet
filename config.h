@@ -3,6 +3,9 @@
 #ifndef _CONFIG_H
 #define _CONFIG_H
 
+#define EV_STANDALONE 1
+#include "libev/ev.c"
+
 #define MANAGER_PORT_NO 9000 // The port we are to listen for the workers
 #define LISTEN_BACKLOG 1024 // The number of pending connections that can be queued up at any one time 
 #define WORKERS 8 // The number of workers

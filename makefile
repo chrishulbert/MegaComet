@@ -1,11 +1,11 @@
 all: megacomet megamanager megastart
 
 megacomet: megacomet.c config.h
-	clang megacomet.c -lev -o megacomet
+	gcc megacomet.c -o megacomet -std=c99
 
 megamanager: megamanager.c config.h
-	clang megamanager.c -lev -o megamanager
+	gcc megamanager.c -o megamanager -std=c99
 
 megastart: megastart.c config.h
-	clang megastart.c -o megastart
+	gcc megastart.c -o megastart -std=c99
 
