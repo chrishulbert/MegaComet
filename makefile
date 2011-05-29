@@ -8,4 +8,3 @@ megamanager: megamanager.c config.h
 
 megastart: megastart.c config.h
 	gcc megastart.c -o megastart -std=c99
-

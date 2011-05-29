@@ -55,7 +55,7 @@ void openManagerSocket(void) {
 
 	// Bind the socket to the address
 	struct sockaddr_in addr;
-	bzero(&addr, sizeof(addr));
+	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(MANAGER_PORT_NO);
 	//inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr.s_addr); // Only listen locally. Use this when your app is running on the same server.
@@ -136,7 +136,7 @@ void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int reve
 		close(client_sd);
 		return;
 	}
-	bzero(&conn[conns], sizeof(connection));
+	memset(&conn[conns], 0, sizeof(connection));
 	conn[conns].socket = client_sd;
 	conn[conns].readStatus = 0;
 	conn[conns].workerNo = -1;

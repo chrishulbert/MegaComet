@@ -89,7 +89,7 @@ void openCometSocket(void) {
 
 	// Bind the socket to the address
 	struct sockaddr_in addr;
-	bzero(&addr, sizeof(addr));
+	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(COMET_BASE_PORT_NO+workerNo);
 	addr.sin_addr.s_addr = INADDR_ANY;
@@ -120,7 +120,7 @@ void openManagerSocket(void) {
 
 	// Build the address of the manager
 	struct sockaddr_in addr;
-	bzero(&addr, sizeof(addr));
+	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(MANAGER_PORT_NO);
 	inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr.s_addr);
@@ -220,7 +220,7 @@ void newConnectionCallback(struct ev_loop *loop, struct ev_io *watcher, int reve
 
 	// Create a client status by getting it from the memory pool
 	clientStatus *newStatus = kmp_alloc(csPool, csPool);
-	bzero(newStatus, sizeof(clientStatus));
+	memset(newStatus, 0, sizeof(clientStatus));
 
 	// Initialize and start watcher to read client requests
 	ev_io_init(&newStatus->io, readCallback, clientSd, EV_READ);
