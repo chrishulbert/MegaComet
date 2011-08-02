@@ -13,7 +13,7 @@
 #include "../config.h"
 
 // Constants
-#define TEST_CONNS 64000
+#define TEST_CONNS 250000
 
 // Useful utilities
 typedef unsigned char byte;
@@ -29,27 +29,30 @@ int findWorker(char* clientIdStr) {
 }
 
 // Find 64k id's that all point to the specified worker
-void runTestsAgainstWorker(int worker) {
-	printf("Running tests against worker %d\n", worker);
-	int clientId=0, clientsForWorker=0;
+void runTestsWithPrefix(char* prefix) {
+	printf("Running tests against prefix %s\n", prefix);
+	int clientId=0;
 	char clientIdStr[20];
-	while (clientsForWorker < TEST_CONNS) {
-		snprintf(clientIdStr,20,"%d",clientId);
-		if (findWorker(clientIdStr)==worker) {
-			clientsForWorker++;
-		}
+	int workerCounts[WORKERS]={};
+	while (clientId < TEST_CONNS) {
+		snprintf(clientIdStr, 20, "%s%d", prefix, clientId);
+		int worker = findWorker(clientIdStr);
+		workerCounts[worker]++;
 		clientId++;
 	}
-	printf("It took up to client id %d to fill this worker\n", clientId);
+	for (int i=0;i<WORKERS;i++) {
+		printf("I'm aiming %d connections at worker #%d\n", workerCounts[i], i);
+	}
 }
 
 int main(int argc, char **args) {
 	if (argc<2) {
 		puts("MegaComet Tester");
-		puts("Usage: megatest N");
-		printf("Where N is the number of the client you wish to test: 0-%d inclusive\n", WORKERS-1);
+		puts("Usage: megatest X");
+		puts("Where X is the prefix for the client ids: (eg A-D)");
+		printf("Creates %d connections\n", TEST_CONNS);
 		return 1;
 	}
-	runTestsAgainstWorker(atoi(args[1]));
+	runTestsWithPrefix(args[1]);
 	return 0;
 }
