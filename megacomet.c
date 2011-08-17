@@ -106,7 +106,7 @@ void openCometSocket(void) {
 		exit(1);
 	}
 
-	puts("Socket opened");
+	// puts("Socket opened");
 }
 
 // Open the connection to the manager
@@ -126,7 +126,7 @@ void openManagerSocket(void) {
 	inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr.s_addr);
 
 	// Connect to the manager
-	puts ("Connecting to manager...");
+	// puts ("Connecting to manager...");
 	int connectResult = connect(managerSd, (struct sockaddr*) &addr, sizeof addr);
 	if (connectResult < 0) {
 		perror("Could not connect to manager. Start the manager first!");
@@ -139,7 +139,7 @@ void openManagerSocket(void) {
 	msg[1]=workerNo;
 	write(managerSd, msg, 2);
 
-	puts("Manager connected");
+	// puts("Manager connected");
 }
 
 // The main libev loop
@@ -155,7 +155,7 @@ void run() {
 	ev_io_init(&managerPortWatcher, managerCallback, managerSd, EV_READ);
 	ev_io_start(libEvLoop, &managerPortWatcher);
 
-	puts("Ready");
+	// puts("Ready");
 
 	// Start infinite loop
 	ev_loop(libEvLoop, 0);
@@ -429,7 +429,7 @@ void readCallback(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	if (read == 0) {
 		// Stop and free watcher if client socket is closing
 		closeConnection(watcher); // TODO is the socket close in this function necessary since the other side closed it anyway?
-		puts("peer closing");
+		// puts("peer closing");
 		return;
 	}
 	// Go through the bytes read
@@ -485,7 +485,7 @@ void readCallback(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 				thisClient->readStatus=20;
 			} else {
 				// drop the connection, they might be trying to access the favicon or something annoying like that	
-				puts ("Not a .js request!");
+				// puts ("Not a .js request!");
 				closeConnection(watcher);
 				return;
 			}
@@ -495,7 +495,7 @@ void readCallback(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 				thisClient->readStatus=12;
 			} else {
 				// drop the connection, they might be trying to access the favicon or something annoying like that	
-				puts ("Not a .js request!");
+				// puts ("Not a .js request!");
 				closeConnection(watcher);
 				return;
 			}

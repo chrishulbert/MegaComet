@@ -73,7 +73,7 @@ void openManagerSocket(void) {
 		exit(1);
 	}
 
-	puts("Socket opened");
+	// puts("Socket opened");
 }
 
 // All the setup stuff goes here
