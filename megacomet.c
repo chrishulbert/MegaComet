@@ -379,7 +379,7 @@ void managerCallback(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 // This is called when the headers are received so we can look for a message waiting for
 // this person, or leave them connected until one comes, or time them out after 50s maybe?
 void receivedHeaders(clientStatus *thisClient) {
-	printf ("Connected by >%s<\r\n", thisClient->clientId);
+	// printf ("Connected by >%s<\r\n", thisClient->clientId);
 
 	// Check to see if there's a message queued for this person
 	// if so, send it and drop the connection
