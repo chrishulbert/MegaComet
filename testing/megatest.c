@@ -1,5 +1,5 @@
 // This is the mega comet tester
-// It opens 64000 client connections to a given target ip
+// It opens lots of client connections to a given target ip
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,7 +14,6 @@
 
 // Constants
 #define TEST_CONNS 250000
-#define TEST_DEST_IP "127.0.0.1"
 #define REQ_TEMPLATE "GET /%s.js HTTP/1.1\r\nHost: www.example.com\r\nUser-Agent: Some browser\r\nAccept: text/html\r\n\r\n"
 
 // Useful utilities
@@ -32,7 +31,7 @@ int findWorker(char* clientIdStr) {
 }
 
 // Opens a single socket
-void openSocket(int worker, char* clientId) {
+void openSocket(int worker, char* clientId, char* serverIp) {
 	// Open the socket file descriptor
 	int sock = socket(PF_INET, SOCK_STREAM, 0);
 	if (sock < 0) {
@@ -45,7 +44,7 @@ void openSocket(int worker, char* clientId) {
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(COMET_BASE_PORT_NO + worker);
-	inet_pton(AF_INET, TEST_DEST_IP, &addr.sin_addr.s_addr);
+	inet_pton(AF_INET, serverIp, &addr.sin_addr.s_addr);
 
 	// Connect to the manager
 	int connectResult = connect(sock, (struct sockaddr*) &addr, sizeof addr);
@@ -60,14 +59,14 @@ void openSocket(int worker, char* clientId) {
 }
 
 // Find 64k id's that all point to the specified worker
-void runTestsWithPrefix(char* prefix) {
+void runTestsWithPrefix(char* prefix, char* serverIp) {
 	printf("Running tests against prefix %s\n", prefix);
 	int clientNum=0;
 	char clientIdStr[20];
 	for (clientNum=0; clientNum < TEST_CONNS; clientNum++) {
 		snprintf(clientIdStr, 20, "%s%d", prefix, clientNum);
 		int worker = findWorker(clientIdStr);
-		openSocket(worker, clientIdStr);
+		openSocket(worker, clientIdStr, serverIp);
 		if (!(clientNum%1000)) {
 			printf("%s\n", clientIdStr);
 		}
@@ -76,14 +75,15 @@ void runTestsWithPrefix(char* prefix) {
 }
 
 int main(int argc, char **args) {
-	if (argc<2) {
+	if (argc<3) {
 		puts("MegaComet Tester");
-		puts("Usage: megatest X");
+		puts("Usage: megatest X Y");
 		puts("Where X is the prefix for the client ids: (eg A-D)");
+		puts("And Y is the IP address of the comet server: (eg 1.2.3.4)");
 		printf("Creates %d connections\n", TEST_CONNS);
 		return 1;
 	}
-	runTestsWithPrefix(args[1]);
+	runTestsWithPrefix(args[1], args[2]);
 	
 	printf("Press enter to quit");
 	char temp[10];
